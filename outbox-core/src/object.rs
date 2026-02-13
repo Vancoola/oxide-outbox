@@ -8,5 +8,15 @@ impl Default for SlotId {
 }
 
 pub struct EventType(String);
+impl EventType {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
 
 pub struct Payload(serde_json::Value);
+impl Payload {
+    pub fn as_json(&self) -> &serde_json::Value {
+        &self.0
+    }
+}
