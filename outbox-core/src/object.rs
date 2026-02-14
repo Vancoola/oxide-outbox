@@ -6,6 +6,11 @@ impl Default for SlotId {
         Self(Uuid::new_v4())
     }
 }
+impl SlotId {
+    pub fn as_uuid(&self) -> Uuid {
+        self.0
+    }
+}
 
 pub struct EventType(String);
 impl EventType {

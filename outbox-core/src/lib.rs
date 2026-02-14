@@ -2,10 +2,16 @@ mod object;
 mod storage;
 mod error;
 mod config;
-mod model;
+pub mod model;
 mod processor;
 mod publisher;
+mod gc;
+mod reply;
 
-use time::OffsetDateTime;
-use crate::object::{EventType, Payload, SlotId};
+pub struct Outbox;
 
+impl Outbox {
+    pub fn new() -> Self {
+        todo!()
+    }
+}
