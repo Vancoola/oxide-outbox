@@ -1,4 +1,3 @@
-use std::cmp::max;
 use std::time::Duration;
 use tracing::error;
 use crate::config::OutboxConfig;

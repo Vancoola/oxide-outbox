@@ -19,4 +19,7 @@ rstest.workspace = true
 
 tracing.workspace = true
 
-sqlx.workspace = true
+sqlx = { workspace = true, optional = true }
+
+[features]
+default=[]

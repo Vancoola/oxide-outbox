@@ -26,8 +26,8 @@ impl OutboxSlot {
     }
 }
 
-#[derive(Debug, sqlx::Type)]
-#[sqlx(type_name = "status", rename_all = "PascalCase")]
+#[cfg_attr(feature = "sqlx", derive(Debug, sqlx::Type))]
+#[cfg_attr(feature = "sqlx", sqlx(type_name = "status", rename_all = "PascalCase"))]
 pub enum SlotStatus {
     Pending,
     Processing,
