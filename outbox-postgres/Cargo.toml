@@ -6,5 +6,6 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-outbox-core.workspace = true
 sqlx.workspace = true
+async-trait.workspace = true
+outbox-core = { path="../outbox-core" }

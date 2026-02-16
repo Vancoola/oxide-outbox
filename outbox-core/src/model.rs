@@ -26,6 +26,8 @@ impl OutboxSlot {
     }
 }
 
+#[derive(Debug, sqlx::Type)]
+#[sqlx(type_name = "status", rename_all = "PascalCase")]
 pub enum SlotStatus {
     Pending,
     Processing,

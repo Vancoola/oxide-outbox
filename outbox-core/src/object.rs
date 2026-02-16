@@ -12,6 +12,7 @@ impl SlotId {
     }
 }
 
+#[derive(Debug)]
 pub struct EventType(String);
 impl EventType {
     pub fn as_str(&self) -> &str {
@@ -19,6 +20,7 @@ impl EventType {
     }
 }
 
+#[derive(Debug)]
 pub struct Payload(serde_json::Value);
 impl Payload {
     pub fn as_json(&self) -> &serde_json::Value {

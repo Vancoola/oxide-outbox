@@ -1,6 +1,7 @@
 use crate::config::OutboxConfig;
 use crate::error::OutboxError;
 use crate::gc::GarbageCollector;
+use crate::model::OutboxSlot;
 use crate::model::SlotStatus::{Failed, Sent};
 use crate::object::SlotId;
 use crate::publisher::EventPublisher;
@@ -21,9 +22,22 @@ where
     S: OutboxStorage + Clone  + 'static,
     P: EventPublisher + Clone  + 'static,
 {
+    
+    pub fn new(storage: S, publisher: P, config: OutboxConfig) -> Self {
+        Self {
+            storage,
+            publisher,
+            config
+        }
+    }
 
-    pub async fn process_pending_events(&self) -> Result<(), OutboxError> {
+    pub async fn process_pending_events(&self) -> Result<usize, OutboxError> {
         let events = self.storage.fetch_next_to_process(self.config.batch_size).await?;
+        self.event_publish(events).await?;
+        Ok(0)
+    }
+    
+    async fn event_publish(&self, events: Vec<OutboxSlot>) -> Result<(), OutboxError> {
         let mut success_ids = Vec::<SlotId>::new();
         let mut failed_ids = Vec::<SlotId>::new();
         for event in events {
@@ -45,4 +59,10 @@ where
         Ok(())
     }
 
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
 }
