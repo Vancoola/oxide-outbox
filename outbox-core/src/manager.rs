@@ -39,8 +39,9 @@ where
             self.config.clone(),
         );
         let mut rx_listen = tx.subscribe();
+        let poll_interval = self.config.poll_interval_secs;
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(60));
+            let mut interval = tokio::time::interval(Duration::from_secs(poll_interval));
 
             loop {
                 tokio::select! {
@@ -74,7 +75,7 @@ where
 
         let gc = GarbageCollector::new(self.storage.clone(), self.config.clone());
         let mut rx_gc = tx.subscribe();
-        let gc_interval_secs = self.config.gc_interval_secs.clone();
+        let gc_interval_secs = self.config.gc_interval_secs;
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(gc_interval_secs));
             loop {
