@@ -4,21 +4,26 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+description = "PostgreSQL storage implementation for oxide-outbox using sqlx"
+repository = "https://github.com/Vancoola/oxide-outbox"
+documentation = "https://docs.rs/outbox-postgres"
+readme = "../README.md"
+keywords = ["outbox", "postgres", "sqlx", "transactional"]
+categories = ["database"]
 
 [dependencies]
 sqlx.workspace = true
 async-trait.workspace = true
-outbox-core = { path="../outbox-core", features = ["sqlx"] }
+outbox-core = { version = "0.1.0", path="../outbox-core", features = ["sqlx"] }
 
 tokio.workspace = true
-rstest.workspace = true
-testcontainers.workspace = true
-testcontainers-modules.workspace = true
 tracing.workspace = true
 
 serde_json.workspace = true
 
 uuid.workspace = true
+
+
 
 [lints]
 workspace = true

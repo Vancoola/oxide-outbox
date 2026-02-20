@@ -154,30 +154,3 @@ where
 }
 
 //TODO: Create tests:
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rstest::rstest;
-    use testcontainers::runners::AsyncRunner;
-    use testcontainers_modules::postgres::Postgres;
-
-    #[rstest]
-    #[tokio::test]
-    async fn data_race() {
-        let db = Postgres::default()
-            .start()
-            .await
-            .expect("Failed to start db");
-        let host = db.get_host().await.expect("Failed to get host");
-        let port = db
-            .get_host_port_ipv4(5432)
-            .await
-            .expect("Failed to get port");
-
-        let connection_string = format!("postgres://postgres:postgres@{host}:{port}/postgres");
-
-        let pool = PgPool::connect(&connection_string)
-            .await
-            .expect("Failed to connect to database");
-    }
-}

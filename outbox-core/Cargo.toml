@@ -4,6 +4,12 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+description = "Core traits and logic for modular transactional outbox pattern in Rust"
+repository = "https://github.com/Vancoola/oxide-outbox"
+documentation = "https://docs.rs/outbox-core"
+readme = "../README.md"
+keywords = ["outbox", "transactional", "event-driven"]
+categories = ["database", "asynchronous"]
 
 [dependencies]
 thiserror.workspace = true

@@ -3,10 +3,15 @@ version = "0.1.0"
 edition = "2024"
 authors = ["Suzdaltsev Denis <suzdaltsevdenis@icloud.com>"]
 license = "MIT"
+repository = "https://github.com/Vancoola/oxide-outbox"
+homepage = "https://github.com/Vancoola/oxide-outbox"
+keywords = ["outbox", "transactional", "postgres", "event-driven"]
+categories = ["database", "asynchronous", "concurrency"]
+readme = "README.md"
 
 [workspace]
 resolver = "2"
-members = ["example/outbox-in-memory","outbox-core", "outbox-postgres"]
+members = ["outbox-core", "outbox-postgres"]
 
 [workspace.dependencies]
 async-trait = "0.1.89"

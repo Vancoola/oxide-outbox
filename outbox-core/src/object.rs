@@ -42,4 +42,8 @@ impl Payload {
     pub fn as_json(&self) -> &serde_json::Value {
         &self.0
     }
+    pub fn from_static_str(s: &'static str) -> Self {
+        let val = serde_json::from_str(s).expect("Invalid JSON in static provider");
+        Self(val)
+    }
 }
