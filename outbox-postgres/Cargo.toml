@@ -16,6 +16,8 @@ testcontainers.workspace = true
 testcontainers-modules.workspace = true
 tracing.workspace = true
 
+serde_json.workspace = true
+
 uuid.workspace = true
 
 [lints]

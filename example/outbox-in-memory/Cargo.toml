@@ -1,0 +1,20 @@
+[package]
+name = "outbox-in-memory"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio.workspace = true
+sqlx.workspace = true
+async-trait.workspace = true
+outbox-core = { path = "../../outbox-core" }
+outbox-postgres = { path = "../../outbox-postgres" }
+
+tracing.workspace = true
+tracing-subscriber = "0.3.22"
+serde_json.workspace = true
+
+[lints]
+workspace = true

@@ -12,3 +12,11 @@ pub trait OutboxStorage {
     async fn delete_garbage(&self) -> Result<(), OutboxError>;
     async fn wait_for_notification(&self, channel: &str) -> Result<(), OutboxError>;
 }
+
+#[async_trait::async_trait]
+pub trait OutboxWriter {
+    async fn insert_event(
+        &self,
+        event: OutboxSlot
+    ) -> Result<(), OutboxError>;
+}

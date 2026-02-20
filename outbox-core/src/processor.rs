@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use tracing::error;
 use crate::config::OutboxConfig;
 use crate::error::OutboxError;
@@ -14,7 +15,7 @@ where
 {
     storage: S,
     publisher: P,
-    config: OutboxConfig,
+    config: Arc<OutboxConfig>,
 }
 
 impl<S, P> OutboxProcessor<S, P>
@@ -23,7 +24,7 @@ where
     P: EventPublisher + Clone  + 'static,
 {
     
-    pub fn new(storage: S, publisher: P, config: OutboxConfig) -> Self {
+    pub fn new(storage: S, publisher: P, config: Arc<OutboxConfig>) -> Self {
         Self {
             storage,
             publisher,

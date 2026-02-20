@@ -1,12 +1,20 @@
-use outbox_core::prelude::*;
 use async_trait::async_trait;
-use sqlx::PgPool;
+use outbox_core::prelude::*;
 use sqlx::types::uuid;
+use sqlx::{Executor, PgPool, Postgres};
+use std::sync::Arc;
 use tracing::debug;
 
+#[derive(Clone)]
 pub struct PostgresOutbox {
     pool: PgPool,
-    config: OutboxConfig,
+    config: Arc<OutboxConfig>,
+}
+
+impl PostgresOutbox {
+    pub fn new(pool: PgPool, config: Arc<OutboxConfig>) -> Self {
+        Self { pool, config }
+    }
 }
 
 #[async_trait]
@@ -61,7 +69,10 @@ impl OutboxStorage for PostgresOutbox {
         ids: &Vec<SlotId>,
         status: SlotStatus,
     ) -> Result<(), OutboxError> {
-        let raw_ids: Vec<uuid::Uuid> = ids.iter().map(outbox_core::prelude::SlotId::as_uuid).collect();
+        let raw_ids: Vec<uuid::Uuid> = ids
+            .iter()
+            .map(outbox_core::prelude::SlotId::as_uuid)
+            .collect();
         sqlx::query!(
             r#"UPDATE outbox_events SET status = $1 WHERE id = ANY($2)"#,
             status as SlotStatus,
@@ -111,6 +122,32 @@ impl OutboxStorage for PostgresOutbox {
             .recv()
             .await
             .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+
+        Ok(())
+    }
+}
+
+pub struct PostgresWriter<E>(pub E);
+
+#[async_trait]
+impl<'a, E> OutboxWriter for PostgresWriter<E>
+where
+    for<'c> &'c E: Executor<'c, Database = Postgres>,
+    E: Send + Sync,
+{
+    async fn insert_event(&self, event: OutboxSlot) -> Result<(), OutboxError> {
+        sqlx::query!(
+                    r#"
+                    INSERT INTO outbox_events (id, event_type, payload, status, created_at, locked_until)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                    "#,
+                    event.id.as_uuid(),
+                    event.event_type.as_str(),
+                    event.payload.as_json(),
+                    event.status as SlotStatus,
+                    event.created_at,
+                    event.locked_until
+                ).execute(&self.0).await.map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
 
         Ok(())
     }

@@ -19,6 +19,9 @@ impl SlotId {
 #[derive(Debug)]
 pub struct EventType(String);
 impl EventType {
+    pub fn new(event_type: &str) -> Self {
+        Self(event_type.to_string())
+    }
     pub fn load(value: &String) -> Self {
         Self(value.clone())
     }
@@ -30,6 +33,9 @@ impl EventType {
 #[derive(Debug)]
 pub struct Payload(serde_json::Value);
 impl Payload {
+    pub fn new(payload: serde_json::Value) -> Self {
+        Self(payload)
+    }
     pub fn load(value: &serde_json::Value) -> Self {
         Self(value.clone())
     }

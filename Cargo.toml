@@ -6,7 +6,7 @@ license = "MIT"
 
 [workspace]
 resolver = "2"
-members = ["outbox-core", "outbox-postgres"]
+members = ["example/outbox-in-memory","outbox-core", "outbox-postgres"]
 
 [workspace.dependencies]
 async-trait = "0.1.89"
