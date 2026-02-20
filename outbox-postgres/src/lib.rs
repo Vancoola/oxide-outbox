@@ -35,7 +35,7 @@ impl OutboxStorage for PostgresOutbox {
                 locked_until
             "#,
             i64::from(limit),
-            self.config.lock_timeout_mins as f64,
+            self.config.lock_timeout_mins as i64,
         )
         .fetch_all(&self.pool)
         .await
@@ -85,7 +85,7 @@ impl OutboxStorage for PostgresOutbox {
                     AND created_at < now() - (INTERVAL '1 day' * $1)
                 LIMIT 5000
             )"#,
-            self.config.retention_days as f64,
+            self.config.retention_days as i64,
         )
         .execute(&self.pool)
         .await

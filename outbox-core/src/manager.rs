@@ -73,7 +73,7 @@ where
             }
         });
 
-        let gc = GarbageCollector::new(self.storage.clone(), self.config.clone());
+        let gc = GarbageCollector::new(self.storage.clone());
         let mut rx_gc = tx.subscribe();
         let gc_interval_secs = self.config.gc_interval_secs;
         tokio::spawn(async move {

@@ -1,4 +1,3 @@
-use crate::config::OutboxConfig;
 use crate::error::OutboxError;
 use crate::storage::OutboxStorage;
 
@@ -7,17 +6,15 @@ where
     S: OutboxStorage + Clone + 'static
 {
     storage: S,
-    config: OutboxConfig
 }
 
 impl<S> GarbageCollector<S>
 where
     S: OutboxStorage + Clone + 'static
 {
-    pub fn new(storage: S, config: OutboxConfig) -> Self {
+    pub fn new(storage: S) -> Self {
         Self {
             storage,
-            config
         }
     }
 
