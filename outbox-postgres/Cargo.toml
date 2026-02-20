@@ -16,14 +16,9 @@ sqlx.workspace = true
 async-trait.workspace = true
 outbox-core = { version = "0.1.0", path="../outbox-core", features = ["sqlx"] }
 
-tokio.workspace = true
 tracing.workspace = true
 
-serde_json.workspace = true
-
 uuid.workspace = true
-
-
 
 [lints]
 workspace = true
