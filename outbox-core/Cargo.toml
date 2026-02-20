@@ -14,12 +14,14 @@ time.workspace = true
 async-trait.workspace = true
 
 tokio.workspace = true
-mockall.workspace = true
-rstest.workspace = true
 
 tracing.workspace = true
 
 sqlx = { workspace = true, optional = true }
+
+[dev-dependencies]
+mockall.workspace = true
+rstest.workspace = true
 
 [features]
 default = []

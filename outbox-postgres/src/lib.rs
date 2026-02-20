@@ -6,6 +6,7 @@ use tracing::debug;
 
 pub struct PostgresOutbox {
     pool: PgPool,
+    config: OutboxConfig,
 }
 
 #[async_trait]
@@ -15,7 +16,7 @@ impl OutboxStorage for PostgresOutbox {
             r#"
                 UPDATE outbox_events
                 SET status = 'Processing',
-                    locked_until = NOW() + interval '5 minutes'
+                    locked_until = NOW() + (INTERVAL '1 minute' * $2)
                 WHERE id IN (
                     SELECT id
                     FROM outbox_events
@@ -33,7 +34,8 @@ impl OutboxStorage for PostgresOutbox {
                 created_at,
                 locked_until
             "#,
-            i64::from(limit)
+            i64::from(limit),
+            self.config.lock_timeout_mins as f64,
         )
         .fetch_all(&self.pool)
         .await
@@ -80,9 +82,10 @@ impl OutboxStorage for PostgresOutbox {
             WHERE id IN (
                 SELECT id FROM outbox_events
                 WHERE status='Sent'
-                    AND created_at < now() - interval '3 days'
+                    AND created_at < now() - (INTERVAL '1 day' * $1)
                 LIMIT 5000
-            )"#
+            )"#,
+            self.config.retention_days as f64,
         )
         .execute(&self.pool)
         .await

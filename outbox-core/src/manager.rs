@@ -74,8 +74,9 @@ where
 
         let gc = GarbageCollector::new(self.storage.clone(), self.config.clone());
         let mut rx_gc = tx.subscribe();
+        let gc_interval_secs = self.config.gc_interval_secs.clone();
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(3600));
+            let mut interval = tokio::time::interval(Duration::from_secs(gc_interval_secs));
             loop {
                 tokio::select! {
                     _ = interval.tick() => { let _ = gc.collect_garbage().await; }
