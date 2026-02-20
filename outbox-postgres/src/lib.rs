@@ -21,7 +21,7 @@ impl PostgresOutbox {
 impl OutboxStorage for PostgresOutbox {
     async fn fetch_next_to_process(&self, limit: u32) -> Result<Vec<OutboxSlot>, OutboxError> {
         let record = sqlx::query_as::<_, OutboxSlot>(
-            r#"
+            r"
                 UPDATE outbox_events
                 SET status = 'Processing',
                     locked_until = NOW() + (INTERVAL '1 minute' * $2)
@@ -41,10 +41,10 @@ impl OutboxStorage for PostgresOutbox {
                 status,
                 created_at,
                 locked_until
-            "#,
+            ",
         )
         .bind(i64::from(limit))
-        .bind(self.config.lock_timeout_mins as i64)
+        .bind(self.config.lock_timeout_mins)
         .fetch_all(&self.pool)
         .await
         .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
@@ -58,7 +58,7 @@ impl OutboxStorage for PostgresOutbox {
     ) -> Result<(), OutboxError> {
         let raw_ids: Vec<uuid::Uuid> = ids.iter().map(SlotId::as_uuid).collect();
 
-        sqlx::query(r#"UPDATE outbox_events SET status = $1 WHERE id = ANY($2)"#)
+        sqlx::query(r"UPDATE outbox_events SET status = $1 WHERE id = ANY($2)")
             .bind(status)
             .bind(&raw_ids)
             .execute(&self.pool)
@@ -70,7 +70,7 @@ impl OutboxStorage for PostgresOutbox {
 
     async fn delete_garbage(&self) -> Result<(), OutboxError> {
         let result = sqlx::query(
-            r#"
+            r"
             DELETE
             FROM outbox_events
             WHERE id IN (
@@ -78,9 +78,9 @@ impl OutboxStorage for PostgresOutbox {
                 WHERE status='Sent'
                     AND created_at < now() - (INTERVAL '1 day' * $1)
                 LIMIT 5000
-            )"#,
+            )",
         )
-        .bind(self.config.retention_days as i64)
+        .bind(self.config.retention_days)
         .execute(&self.pool)
         .await
         .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
@@ -120,10 +120,10 @@ where
 {
     async fn insert_event(&self, event: OutboxSlot) -> Result<(), OutboxError> {
         sqlx::query(
-            r#"
+            r"
         INSERT INTO outbox_events (id, event_type, payload, status, created_at, locked_until)
         VALUES ($1, $2, $3, $4, $5, $6)
-        "#,
+        ",
         )
         .bind(event.id.as_uuid())
         .bind(event.event_type.as_str())
