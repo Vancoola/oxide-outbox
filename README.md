@@ -1,6 +1,6 @@
 # Oxide Outbox 🦀
 
-[![Crates.io](https://img.shields.io/crates/v/oxide-outbox-core.svg)](https://crates.io/crates/oxide-outbox-core)
+[![Crates.io](https://img.shields.io/crates/v/oxide-outbox-core.svg)](https://crates.io/crates/outbox-core)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A high-performance, flexible implementation of the **Transactional Outbox pattern** for Rust. Ensure reliable message delivery in your distributed systems by decoupling database transactions from event publishing.
@@ -50,6 +50,8 @@ outbox-postgres = "0.1" # If using Postgres
 - **At-Least-Once Delivery**: Messages are guaranteed to be delivered at least once. If a worker fails while processing an event, the message remains in the database.
 - **Lazy Retry (Visibility Timeout)**: When an event is picked up, it is assigned a `lock_until` timestamp. If the worker doesn't mark it as completed within the `lock_timeout_mins` (e.g., due to a crash), the event automatically becomes visible again for the next polling cycle or notification.
 - **Transactional Integrity**: Since the outbox table lives in your business database, events are saved within the same ACID transaction as your business logic, ensuring they are never lost or orphaned.
+
+---
 
 ## Quick Start
 
