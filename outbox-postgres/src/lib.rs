@@ -1,23 +1,27 @@
+use outbox_core::prelude::*;
 use async_trait::async_trait;
 use sqlx::PgPool;
-use outbox_core::error::OutboxError;
-use outbox_core::model::{OutboxSlot, SlotStatus};
-use outbox_core::storage::OutboxStorage;
+use sqlx::types::uuid;
+use tracing::debug;
+
 pub struct PostgresOutbox {
-    pool: PgPool
+    pool: PgPool,
 }
 
 #[async_trait]
 impl OutboxStorage for PostgresOutbox {
     async fn fetch_next_to_process(&self, limit: u32) -> Result<Vec<OutboxSlot>, OutboxError> {
-        let record = sqlx::query!(r#"
+        let record = sqlx::query!(
+            r#"
                 UPDATE outbox_events
-                SET status = 'Processing'
+                SET status = 'Processing',
+                    locked_until = NOW() + interval '5 minutes'
                 WHERE id IN (
                     SELECT id
                     FROM outbox_events
                     WHERE status='Pending'
-                    ORDER BY created_at
+                        OR (status='Processing' AND locked_until < NOW())
+                    ORDER BY locked_until ASC
                     LIMIT $1
                     FOR UPDATE SKIP LOCKED
                 )
@@ -27,35 +31,113 @@ impl OutboxStorage for PostgresOutbox {
                 payload,
                 status AS "status: SlotStatus",
                 created_at,
-                processed_at,
-                retry_count,
-                last_error
+                locked_until
             "#,
-        limit as i64).fetch_all(&self.pool).await.map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
-        todo!()
+            limit as i64
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+        let r = record
+            .iter()
+            .map(|o| {
+                OutboxSlot::load(
+                    o.id,
+                    &o.event_type,
+                    &o.payload,
+                    o.created_at,
+                    o.locked_until,
+                    &o.status,
+                )
+            })
+            .collect();
+        Ok(r)
     }
 
-    async fn fetch_unprocessed(&self, limit: u32) -> Result<Vec<OutboxSlot>, OutboxError> {
-        todo!()
-    }
+    async fn updates_status(
+        &self,
+        ids: &Vec<SlotId>,
+        status: SlotStatus,
+    ) -> Result<(), OutboxError> {
+        let raw_ids: Vec<uuid::Uuid> = ids.iter().map(|id| id.as_uuid()).collect();
+        sqlx::query!(
+            r#"UPDATE outbox_events SET status = $1 WHERE id = ANY($2)"#,
+            status as SlotStatus,
+            &raw_ids as &[uuid::Uuid]
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
 
-    async fn add_fail_counts(&self, ids: &Vec<outbox_core::object::SlotId>) -> Result<(), OutboxError> {
-        todo!()
-    }
-
-    async fn update_status(&self, id: &outbox_core::object::SlotId, status: SlotStatus) -> Result<(), OutboxError> {
-        todo!()
-    }
-
-    async fn updates_status(&self, id: &Vec<outbox_core::object::SlotId>, status: SlotStatus) -> Result<(), OutboxError> {
-        todo!()
+        Ok(())
     }
 
     async fn delete_garbage(&self) -> Result<(), OutboxError> {
-        todo!()
+        let result = sqlx::query!(
+            r#"
+            DELETE
+            FROM outbox_events
+            WHERE id IN (
+                SELECT id FROM outbox_events
+                WHERE status='Sent'
+                    AND created_at < now() - interval '3 days'
+                LIMIT 5000
+            )"#
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+        debug!(
+            "Garbage collector: deleted {} old messages",
+            result.rows_affected()
+        );
+        Ok(())
     }
 
     async fn wait_for_notification(&self, channel: &str) -> Result<(), OutboxError> {
-        todo!()
+        let mut listener = sqlx::postgres::PgListener::connect_with(&self.pool)
+            .await
+            .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+
+        listener
+            .listen(channel)
+            .await
+            .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+
+        listener
+            .recv()
+            .await
+            .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+
+        Ok(())
+    }
+}
+
+//TODO: Create tests:
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+    use testcontainers::runners::AsyncRunner;
+    use testcontainers_modules::postgres::Postgres;
+
+    #[rstest]
+    #[tokio::test]
+    async fn data_race() {
+        let db = Postgres::default()
+            .start()
+            .await
+            .expect("Failed to start db");
+        let host = db.get_host().await.expect("Failed to get host");
+        let port = db
+            .get_host_port_ipv4(5432)
+            .await
+            .expect("Failed to get port");
+
+        let connection_string = format!("postgres://postgres:postgres@{host}:{port}/postgres");
+
+        let pool = PgPool::connect(&connection_string)
+            .await
+            .expect("Failed to connect to database");
     }
 }

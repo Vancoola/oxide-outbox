@@ -1,8 +1,9 @@
+use tracing::error;
 use crate::config::OutboxConfig;
 use crate::error::OutboxError;
 use crate::gc::GarbageCollector;
 use crate::model::OutboxSlot;
-use crate::model::SlotStatus::{Failed, Sent};
+use crate::model::SlotStatus::{Pending, Sent};
 use crate::object::SlotId;
 use crate::publisher::EventPublisher;
 use crate::storage::OutboxStorage;
@@ -33,28 +34,29 @@ where
 
     pub async fn process_pending_events(&self) -> Result<usize, OutboxError> {
         let events = self.storage.fetch_next_to_process(self.config.batch_size).await?;
+
+        if events.is_empty() {
+            return Ok(0);
+        }
+        let count = events.len();
         self.event_publish(events).await?;
-        Ok(0)
+        Ok(count)
     }
     
     async fn event_publish(&self, events: Vec<OutboxSlot>) -> Result<(), OutboxError> {
         let mut success_ids = Vec::<SlotId>::new();
-        let mut failed_ids = Vec::<SlotId>::new();
         for event in events {
             match self.publisher.publish(event.event_type, event.payload).await {
                 Ok(_) => {
                     success_ids.push(event.id);
                 }
-                Err(_) => {
-                    failed_ids.push(event.id);
+                Err(e) => {
+                    error!("Failed to publish event {:?}: {:?}", event.id, e);
                 }
             }
         }
         if !success_ids.is_empty() {
             self.storage.updates_status(&success_ids, Sent).await?;
-        }
-        if !failed_ids.is_empty() {
-            self.storage.updates_status(&failed_ids, Failed).await?;
         }
         Ok(())
     }

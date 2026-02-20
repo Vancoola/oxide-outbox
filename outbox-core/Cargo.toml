@@ -22,4 +22,5 @@ tracing.workspace = true
 sqlx = { workspace = true, optional = true }
 
 [features]
-default=[]
+default = []
+full = ["sqlx"]

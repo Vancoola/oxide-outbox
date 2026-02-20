@@ -1,12 +1,11 @@
-use std::time::Duration;
-use tracing::error;
 use crate::config::OutboxConfig;
 use crate::error::OutboxError;
 use crate::gc::GarbageCollector;
 use crate::processor::OutboxProcessor;
 use crate::publisher::EventPublisher;
-use crate::reply::ReplyService;
 use crate::storage::OutboxStorage;
+use std::time::Duration;
+use tracing::{debug, error, trace};
 
 pub struct OutboxManager<S, P> {
     storage: S,
@@ -29,49 +28,46 @@ where
         }
     }
 
-    //TODO: make logs
     pub async fn run(&mut self) -> Result<(), OutboxError> {
         let (tx, _) = tokio::sync::broadcast::channel(1);
         self.shutdown_tx = Some(tx.clone());
 
         let storage_for_listen = self.storage.clone();
-        let processor = OutboxProcessor::new(self.storage.clone(), self.publisher.clone(), self.config.clone());
+        let processor = OutboxProcessor::new(
+            self.storage.clone(),
+            self.publisher.clone(),
+            self.config.clone(),
+        );
         let mut rx_listen = tx.subscribe();
         tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(60));
+
             loop {
                 tokio::select! {
                     signal = storage_for_listen.wait_for_notification("outbox") => {
-                        if let Err(e) = signal{
+                        if let Err(e) = signal {
                             error!("Listen error: {}", e);
                             tokio::time::sleep(Duration::from_secs(5)).await;
                             continue;
                         }
-                        loop {
-                            match processor.process_pending_events().await {
-                                Ok(0) => break,
-                                Ok(_) => continue,
-                                Err(e) => {
-                                    error!("Pending error: {}", e);
-                                    break;
-                                }
-                            }
-                        }
+                    }
+                    _ = interval.tick() => {
+                        trace!("Checking for stale or pending events via interval");
                     }
                     _ = rx_listen.recv() => {
                         break;
                     }
                 }
-            }
-        });
-
-        let replayer = ReplyService::new(self.storage.clone(), self.publisher.clone(), self.config.clone());
-        let mut rx_replay = tx.subscribe();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(60));
-            loop {
-                tokio::select! {
-                    _ = interval.tick() => { let _ = replayer.try_replay().await; }
-                    _ = rx_replay.recv() => break,
+                loop {
+                    match processor.process_pending_events().await {
+                        Ok(0) => break,
+                        Ok(count) => debug!("Processed {} events", count),
+                        Err(e) => {
+                            error!("Processing error: {}", e);
+                            tokio::time::sleep(Duration::from_secs(1)).await;
+                            break;
+                        }
+                    }
                 }
             }
         });
@@ -90,5 +86,4 @@ where
 
         Ok(())
     }
-
 }

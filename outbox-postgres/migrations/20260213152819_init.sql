@@ -1,7 +1,8 @@
 -- Add migration script here
-create type status as enum(
+create type status as enum (
     'Pending',
-    'Processing'
+    'Processing',
+    'Sent'
     );
 
 create table outbox_events
@@ -11,12 +12,11 @@ create table outbox_events
     payload      jsonb       not null,
     status       status      not null default 'Pending',
     created_at   timestamptz not null default now(),
-    processed_at timestamptz,
-    retry_count  int         not null default 0,
-    last_error   text
+    locked_until timestamptz not null default '-infinity'
 );
-CREATE INDEX idx_outbox_unprocessed ON outbox_events (created_at)
-    WHERE processed_at IS NULL;
+CREATE INDEX idx_outbox_processing_queue
+    ON outbox_events (locked_until ASC, status)
+    WHERE status IN ('Pending', 'Processing');
 
 create or replace function notify_outbox_event() returns trigger as
 $$

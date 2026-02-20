@@ -9,3 +9,11 @@ license.workspace = true
 sqlx.workspace = true
 async-trait.workspace = true
 outbox-core = { path="../outbox-core", features = ["sqlx"] }
+
+tokio.workspace = true
+rstest.workspace = true
+testcontainers.workspace = true
+testcontainers-modules.workspace = true
+tracing.workspace = true
+
+uuid.workspace = true
