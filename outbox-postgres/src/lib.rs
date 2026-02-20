@@ -45,9 +45,9 @@ impl OutboxStorage for PostgresOutbox {
             i64::from(limit),
             self.config.lock_timeout_mins as i64,
         )
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
         let r = record
             .iter()
             .map(|o| {
@@ -78,9 +78,9 @@ impl OutboxStorage for PostgresOutbox {
             status as SlotStatus,
             &raw_ids as &[uuid::Uuid]
         )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+            .execute(&self.pool)
+            .await
+            .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
 
         Ok(())
     }
@@ -98,9 +98,9 @@ impl OutboxStorage for PostgresOutbox {
             )"#,
             self.config.retention_days as i64,
         )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+            .execute(&self.pool)
+            .await
+            .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
         debug!(
             "Garbage collector: deleted {} old messages",
             result.rows_affected()
@@ -132,8 +132,8 @@ pub struct PostgresWriter<E>(pub E);
 #[async_trait]
 impl<'a, E> OutboxWriter for PostgresWriter<E>
 where
-    for<'c> &'c E: Executor<'c, Database = Postgres>,
-    E: Send + Sync,
+        for<'c> &'c E: Executor<'c, Database = Postgres>,
+        E: Send + Sync,
 {
     async fn insert_event(&self, event: OutboxSlot) -> Result<(), OutboxError> {
         sqlx::query!(

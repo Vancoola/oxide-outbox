@@ -23,7 +23,7 @@ where
     S: OutboxStorage + Clone  + 'static,
     P: EventPublisher + Clone  + 'static,
 {
-    
+
     pub fn new(storage: S, publisher: P, config: Arc<OutboxConfig>) -> Self {
         Self {
             storage,
@@ -42,7 +42,7 @@ where
         self.event_publish(events).await?;
         Ok(count)
     }
-    
+
     async fn event_publish(&self, events: Vec<OutboxSlot>) -> Result<(), OutboxError> {
         let mut success_ids = Vec::<SlotId>::new();
         for event in events {

@@ -18,8 +18,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         lock_timeout_mins: 5,
     });
 
-
-
     let storage = PostgresOutbox::new(pool.clone(), config.clone());
     let writer = PostgresWriter(pool.clone());
 
