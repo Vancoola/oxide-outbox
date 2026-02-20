@@ -31,3 +31,15 @@ mockall = "0.14.0"
 rstest = "0.26.1"
 testcontainers = "0.26.3"
 testcontainers-modules = { version = "0.14.0", features = ["postgres"] }
+
+[workspace.lints.clippy]
+pedantic = "warn"
+must_use_candidate = "allow"
+unwrap_used = "deny"
+perf = "warn"
+panic = "deny"
+todo = "warn"
+unreachable = "warn"
+enum_glob_use = "deny"
+explicit_iter_loop = "warn"
+redundant_closure_for_method_calls = "warn"

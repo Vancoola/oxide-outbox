@@ -1,9 +1,8 @@
 use tracing::error;
 use crate::config::OutboxConfig;
 use crate::error::OutboxError;
-use crate::gc::GarbageCollector;
 use crate::model::OutboxSlot;
-use crate::model::SlotStatus::{Pending, Sent};
+use crate::model::SlotStatus::Sent;
 use crate::object::SlotId;
 use crate::publisher::EventPublisher;
 use crate::storage::OutboxStorage;
@@ -47,7 +46,7 @@ where
         let mut success_ids = Vec::<SlotId>::new();
         for event in events {
             match self.publisher.publish(event.event_type, event.payload).await {
-                Ok(_) => {
+                Ok(()) => {
                     success_ids.push(event.id);
                 }
                 Err(e) => {

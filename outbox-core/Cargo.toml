@@ -24,3 +24,6 @@ sqlx = { workspace = true, optional = true }
 [features]
 default = []
 full = ["sqlx"]
+
+[lints]
+workspace = true

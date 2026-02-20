@@ -1,6 +1,5 @@
 use crate::config::OutboxConfig;
 use crate::error::OutboxError;
-use crate::object::SlotId;
 use crate::storage::OutboxStorage;
 
 pub(crate) struct GarbageCollector<S>

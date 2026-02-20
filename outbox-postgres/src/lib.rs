@@ -33,7 +33,7 @@ impl OutboxStorage for PostgresOutbox {
                 created_at,
                 locked_until
             "#,
-            limit as i64
+            i64::from(limit)
         )
         .fetch_all(&self.pool)
         .await
@@ -59,7 +59,7 @@ impl OutboxStorage for PostgresOutbox {
         ids: &Vec<SlotId>,
         status: SlotStatus,
     ) -> Result<(), OutboxError> {
-        let raw_ids: Vec<uuid::Uuid> = ids.iter().map(|id| id.as_uuid()).collect();
+        let raw_ids: Vec<uuid::Uuid> = ids.iter().map(outbox_core::prelude::SlotId::as_uuid).collect();
         sqlx::query!(
             r#"UPDATE outbox_events SET status = $1 WHERE id = ANY($2)"#,
             status as SlotStatus,
