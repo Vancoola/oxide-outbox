@@ -1,4 +1,3 @@
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]

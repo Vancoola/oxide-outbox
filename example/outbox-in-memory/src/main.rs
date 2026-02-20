@@ -12,7 +12,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = PgPool::connect("postgresql://postgres:mysecretpassword@localhost:5432/outbox").await?;
     let config = Arc::new(OutboxConfig {
         batch_size: 100,
-        retention_days: 7,
+        retention_days: 0,
         gc_interval_secs: 10,
         poll_interval_secs: 10,
         lock_timeout_mins: 5,
@@ -40,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Inserting test event into DB...");
     add_event(writer, "OrderCreated", serde_json::json!({"id": 123})).await?;
-    tokio::time::sleep(Duration::from_secs(30)).await;
+    tokio::time::sleep(Duration::from_mins(5)).await;
     Ok(())
 }
 struct Message(EventType, Payload);

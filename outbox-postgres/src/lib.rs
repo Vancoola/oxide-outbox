@@ -38,7 +38,7 @@ impl OutboxStorage for PostgresOutbox {
                 id,
                 event_type,
                 payload,
-                status AS "status: SlotStatus",
+                status,
                 created_at,
                 locked_until
             "#,

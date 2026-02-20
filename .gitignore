@@ -2,3 +2,5 @@
 /Cargo.lock
 /.idea
 .env
+/example/outbox-in-memory/target/
+/example/outbox-in-memory/Cargo.lock
