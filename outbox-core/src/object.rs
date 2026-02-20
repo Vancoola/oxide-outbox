@@ -1,5 +1,8 @@
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
+#[cfg_attr(feature = "sqlx", sqlx(transparent))]
 #[derive(Debug)]
 pub struct SlotId(Uuid);
 impl Default for SlotId {
@@ -16,6 +19,8 @@ impl SlotId {
     }
 }
 
+#[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
+#[cfg_attr(feature = "sqlx", sqlx(transparent))]
 #[derive(Debug)]
 pub struct EventType(String);
 impl EventType {
@@ -30,6 +35,8 @@ impl EventType {
     }
 }
 
+#[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
+#[cfg_attr(feature = "sqlx", sqlx(transparent))]
 #[derive(Debug)]
 pub struct Payload(serde_json::Value);
 impl Payload {

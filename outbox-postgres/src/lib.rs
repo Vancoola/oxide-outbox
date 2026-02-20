@@ -20,7 +20,7 @@ impl PostgresOutbox {
 #[async_trait]
 impl OutboxStorage for PostgresOutbox {
     async fn fetch_next_to_process(&self, limit: u32) -> Result<Vec<OutboxSlot>, OutboxError> {
-        let record = sqlx::query!(
+        let record = sqlx::query_as::<_, OutboxSlot>(
             r#"
                 UPDATE outbox_events
                 SET status = 'Processing',
@@ -42,26 +42,13 @@ impl OutboxStorage for PostgresOutbox {
                 created_at,
                 locked_until
             "#,
-            i64::from(limit),
-            self.config.lock_timeout_mins as i64,
         )
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
-        let r = record
-            .iter()
-            .map(|o| {
-                OutboxSlot::load(
-                    o.id,
-                    &o.event_type,
-                    &o.payload,
-                    o.created_at,
-                    o.locked_until,
-                    &o.status,
-                )
-            })
-            .collect();
-        Ok(r)
+        .bind(i64::from(limit))
+        .bind(self.config.lock_timeout_mins as i64)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+        Ok(record)
     }
 
     async fn updates_status(
@@ -69,15 +56,11 @@ impl OutboxStorage for PostgresOutbox {
         ids: &Vec<SlotId>,
         status: SlotStatus,
     ) -> Result<(), OutboxError> {
-        let raw_ids: Vec<uuid::Uuid> = ids
-            .iter()
-            .map(outbox_core::prelude::SlotId::as_uuid)
-            .collect();
-        sqlx::query!(
-            r#"UPDATE outbox_events SET status = $1 WHERE id = ANY($2)"#,
-            status as SlotStatus,
-            &raw_ids as &[uuid::Uuid]
-        )
+        let raw_ids: Vec<uuid::Uuid> = ids.iter().map(SlotId::as_uuid).collect();
+
+        sqlx::query(r#"UPDATE outbox_events SET status = $1 WHERE id = ANY($2)"#)
+            .bind(status)
+            .bind(&raw_ids)
             .execute(&self.pool)
             .await
             .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
@@ -86,7 +69,7 @@ impl OutboxStorage for PostgresOutbox {
     }
 
     async fn delete_garbage(&self) -> Result<(), OutboxError> {
-        let result = sqlx::query!(
+        let result = sqlx::query(
             r#"
             DELETE
             FROM outbox_events
@@ -96,11 +79,11 @@ impl OutboxStorage for PostgresOutbox {
                     AND created_at < now() - (INTERVAL '1 day' * $1)
                 LIMIT 5000
             )"#,
-            self.config.retention_days as i64,
         )
-            .execute(&self.pool)
-            .await
-            .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+        .bind(self.config.retention_days as i64)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
         debug!(
             "Garbage collector: deleted {} old messages",
             result.rows_affected()
@@ -132,22 +115,25 @@ pub struct PostgresWriter<E>(pub E);
 #[async_trait]
 impl<'a, E> OutboxWriter for PostgresWriter<E>
 where
-        for<'c> &'c E: Executor<'c, Database = Postgres>,
-        E: Send + Sync,
+    for<'c> &'c E: Executor<'c, Database = Postgres>,
+    E: Send + Sync,
 {
     async fn insert_event(&self, event: OutboxSlot) -> Result<(), OutboxError> {
-        sqlx::query!(
-                    r#"
-                    INSERT INTO outbox_events (id, event_type, payload, status, created_at, locked_until)
-                    VALUES ($1, $2, $3, $4, $5, $6)
-                    "#,
-                    event.id.as_uuid(),
-                    event.event_type.as_str(),
-                    event.payload.as_json(),
-                    event.status as SlotStatus,
-                    event.created_at,
-                    event.locked_until
-                ).execute(&self.0).await.map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+        sqlx::query(
+            r#"
+        INSERT INTO outbox_events (id, event_type, payload, status, created_at, locked_until)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        "#,
+        )
+        .bind(event.id.as_uuid())
+        .bind(event.event_type.as_str())
+        .bind(event.payload.as_json())
+        .bind(event.status)
+        .bind(event.created_at)
+        .bind(event.locked_until)
+        .execute(&self.0)
+        .await
+        .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
 
         Ok(())
     }

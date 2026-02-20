@@ -1,7 +1,9 @@
+use sqlx::FromRow;
 use crate::object::{EventType, Payload, SlotId};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+#[cfg_attr(feature = "sqlx", derive(FromRow))]
 pub struct OutboxSlot {
     pub id: SlotId,
     pub event_type: EventType,
