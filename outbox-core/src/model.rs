@@ -1,6 +1,5 @@
 use crate::object::{EventType, Payload, EventId, IdempotencyToken};
 use time::OffsetDateTime;
-use uuid::Uuid;
 
 #[cfg_attr(feature = "sqlx", derive(sqlx::FromRow))]
 pub struct Event {

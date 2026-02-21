@@ -20,7 +20,7 @@ mod service;
 /// This function performs a raw insert into the database WITHOUT checking the
 /// idempotency storage. It is kept only for backward compatibility.
 ///
-/// For production use with deduplication, please migrate to [service::OutboxService].
+/// For production use with deduplication, please migrate to [`service::OutboxService`].
 #[deprecated(
     since = "0.2.0",
     note = "SECURITY WARNING: This standalone function ignores idempotency checks.
@@ -40,10 +40,7 @@ where
     F: FnOnce() -> Option<Event>,
 {
 
-    let i_token = match config.idempotency_strategy.invoke(provided_token, get_event) {
-        Some(i) => Some(IdempotencyToken::new(i)),
-        None => None,
-    };
+    let i_token = config.idempotency_strategy.invoke(provided_token, get_event).map(IdempotencyToken::new);
 
     let event = Event::new(EventType::new(event_type), Payload::new(payload), i_token);
     writer.insert_event(event).await
