@@ -44,6 +44,7 @@ Add this to your `Cargo.toml`:
 
 outbox-core = "0.1"
 outbox-postgres = "0.1" # If using Postgres
+outbox-redis = { version = "0.1", features = ["moka"] } # Optional Redis deduplication
 ```
 
 ---
