@@ -4,6 +4,8 @@ use sqlx::PgPool;
 use tracing::{error, info, Level};
 use outbox_core::prelude::*;
 use outbox_postgres::{PostgresOutbox, PostgresWriter};
+use outbox_redis::config::RedisTokenConfig;
+use outbox_redis::RedisTokenProvider;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -18,9 +20,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         lock_timeout_mins: 1,
         idempotency_strategy: IdempotencyStrategy::Provided
     });
+    let regis_config = RedisTokenConfig::default();
 
     let storage = PostgresOutbox::new(pool.clone(), config.clone());
     let writer = PostgresWriter(pool.clone());
+    let redis_provider = RedisTokenProvider::new("redis://127.0.0.1:6379", regis_config).await?;
 
     let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<Message>();
     let publisher = TokioEventPublisher(sender);
@@ -39,11 +43,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    let service = OutboxService::new(writer, redis_provider, config.clone());
+
     info!("Inserting test event into DB...");
-    add_event(&writer, "OrderCreated", serde_json::json!({"id": 123}), &config, Some(String::from("r_token")), || None).await?;
-    tokio::time::sleep(Duration::from_secs(20)).await;
-    info!("Inserting test 2 event into DB...");
-    add_event(&writer, "OrderCreated", serde_json::json!({"id": 321}), &config, Some(String::from("r_token")), || None).await?;
+    service.add_event("OrderCreated", serde_json::json!({"id": 123}), Some(String::from("r_token")), || None).await?;
+    tokio::time::sleep(Duration::from_secs(10)).await;
+    info!("Deduplication! Inserting test 2 event into DB...");
+    if let Err(e) = service.add_event("OrderCreated", serde_json::json!({"id": 123}), Some(String::from("r_token")), || None).await {
+        error!("Deduplication error: {}", e);
+    }
+
     tokio::time::sleep(Duration::from_mins(2)).await;
     Ok(())
 }

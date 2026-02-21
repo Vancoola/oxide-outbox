@@ -4,4 +4,6 @@ use thiserror::Error;
 pub enum OutboxError {
     #[error("Infrastructure error: {0}")]
     InfrastructureError(String),
+    #[error("Duplicate error")]
+    DuplicateEvent,
 }

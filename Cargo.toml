@@ -11,7 +11,7 @@ readme = "README.md"
 
 [workspace]
 resolver = "2"
-members = ["outbox-core", "outbox-postgres"]
+members = ["outbox-core", "outbox-postgres", "outbox-redis", "example/outbox-in-memory", "example/distributed-deduplication"]
 
 [workspace.dependencies]
 async-trait = "0.1.89"
@@ -30,6 +30,8 @@ time = { version = "0.3.46", features = ["serde"] }
 
 tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread", "sync", "time"] }
 sqlx = { version = "0.8.6", features = ["postgres", "runtime-tokio", "macros", "uuid", "time"] }
+redis = { version = "1.0.4", features = ["tokio-comp", "aio"] }
+moka = { version = "0.12.13", features = ["future"] }
 
 
 mockall = "0.14.0"
