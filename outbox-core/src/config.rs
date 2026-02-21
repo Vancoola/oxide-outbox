@@ -1,3 +1,5 @@
+use crate::model::OutboxSlot;
+
 #[derive(Clone)]
 pub struct OutboxConfig {
     pub batch_size: u32,
@@ -17,4 +19,12 @@ impl Default for OutboxConfig {
             lock_timeout_mins: 5,
         }
     }
+}
+
+pub enum IdempotencyStrategy {
+    Provided(String),
+    Custom(fn(&OutboxSlot) -> String),
+    Uuid, //Uuid V7
+    HashPayload, //BLAKE3
+    None,
 }
