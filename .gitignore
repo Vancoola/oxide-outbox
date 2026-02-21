@@ -4,3 +4,5 @@
 .env
 /example/outbox-in-memory/target/
 /example/outbox-in-memory/Cargo.lock
+/example/distributed-deduplication/Cargo.lock
+/example/distributed-deduplication/target/
