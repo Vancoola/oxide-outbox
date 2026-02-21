@@ -15,7 +15,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         retention_days: 1,
         gc_interval_secs: 10,
         poll_interval_secs: 100,
-        lock_timeout_mins: 1
+        lock_timeout_mins: 1,
+        idempotency_strategy: IdempotencyStrategy::Uuid,
+        idempotency_storage: IdempotencyStorage::None
     });
 
     let storage = PostgresOutbox::new(pool.clone(), config.clone());
@@ -39,10 +41,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     info!("Inserting test event into DB...");
-    add_event(&writer, "OrderCreated", serde_json::json!({"id": 123})).await?;
+    add_event(&writer, "OrderCreated", serde_json::json!({"id": 123}), None).await?;
     tokio::time::sleep(Duration::from_secs(20)).await;
     info!("Inserting test 2 event into DB...");
-    add_event(&writer, "OrderCreated", serde_json::json!({"id": 321})).await?;
+    add_event(&writer, "OrderCreated", serde_json::json!({"id": 321}), None).await?;
     tokio::time::sleep(Duration::from_mins(2)).await;
     Ok(())
 }
@@ -56,4 +58,5 @@ impl Transport for TokioEventPublisher {
         self.0.send(Message(event_type, payload)).map_err(|e| OutboxError::InfrastructureError(e.to_string()))
     }
 }
+
 

@@ -57,11 +57,11 @@ impl OutboxStorage for PostgresOutbox {
                 locked_until
             ",
         )
-            .bind(i64::from(limit))
-            .bind(self.inner.config.lock_timeout_mins)
-            .fetch_all(&self.inner.pool)
-            .await
-            .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+        .bind(i64::from(limit))
+        .bind(self.inner.config.lock_timeout_mins)
+        .fetch_all(&self.inner.pool)
+        .await
+        .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
         Ok(record)
     }
 
@@ -94,10 +94,10 @@ impl OutboxStorage for PostgresOutbox {
                 LIMIT 5000
             )",
         )
-            .bind(self.inner.config.retention_days)
-            .execute(&self.inner.pool)
-            .await
-            .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+        .bind(self.inner.config.retention_days)
+        .execute(&self.inner.pool)
+        .await
+        .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
         debug!(
             "Garbage collector: deleted {} old messages",
             result.rows_affected()
@@ -136,8 +136,8 @@ pub struct PostgresWriter<E>(pub E);
 #[async_trait]
 impl<'a, E> OutboxWriter for PostgresWriter<E>
 where
-        for<'c> &'c E: Executor<'c, Database = Postgres>,
-        E: Send + Sync,
+    for<'c> &'c E: Executor<'c, Database = Postgres>,
+    E: Send + Sync,
 {
     async fn insert_event(&self, event: Event) -> Result<(), OutboxError> {
         sqlx::query(
@@ -146,15 +146,15 @@ where
         VALUES ($1, $2, $3, $4, $5, $6)
         ",
         )
-            .bind(event.id.as_uuid())
-            .bind(event.event_type.as_str())
-            .bind(event.payload.as_json())
-            .bind(event.status)
-            .bind(event.created_at)
-            .bind(event.locked_until)
-            .execute(&self.0)
-            .await
-            .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+        .bind(event.id.as_uuid())
+        .bind(event.event_type.as_str())
+        .bind(event.payload.as_json())
+        .bind(event.status)
+        .bind(event.created_at)
+        .bind(event.locked_until)
+        .execute(&self.0)
+        .await
+        .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
 
         Ok(())
     }

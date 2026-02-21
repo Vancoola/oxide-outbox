@@ -21,6 +21,16 @@ impl EventId {
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
 #[cfg_attr(feature = "sqlx", sqlx(transparent))]
 #[derive(Debug)]
+pub struct IdempotencyToken(String);
+impl IdempotencyToken {
+    pub fn new(token: String) -> Self {
+        Self(token)
+    }
+}
+
+#[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
+#[cfg_attr(feature = "sqlx", sqlx(transparent))]
+#[derive(Debug)]
 pub struct EventType(String);
 impl EventType {
     pub fn new(event_type: &str) -> Self {

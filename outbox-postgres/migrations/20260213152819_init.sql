@@ -7,16 +7,19 @@ create type status as enum (
 
 create table outbox_events
 (
-    id           uuid primary key     default gen_random_uuid(),
-    event_type   text        not null,
-    payload      jsonb       not null,
-    status       status      not null default 'Pending',
-    created_at   timestamptz not null default now(),
-    locked_until timestamptz not null default '-infinity'
+    id                uuid primary key     default gen_random_uuid(),
+    idempotency_token text                 default null,
+    event_type        text        not null,
+    payload           jsonb       not null,
+    status            status      not null default 'Pending',
+    created_at        timestamptz not null default now(),
+    locked_until      timestamptz not null default '-infinity'
 );
 CREATE INDEX idx_outbox_processing_queue
     ON outbox_events (locked_until ASC, status)
     WHERE status IN ('Pending', 'Processing');
+CREATE UNIQUE INDEX idx_outbox_idempotency
+    ON outbox_events (idempotency_token);
 
 create or replace function notify_outbox_event() returns trigger as
 $$
