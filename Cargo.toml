@@ -11,7 +11,7 @@ readme = "README.md"
 
 [workspace]
 resolver = "2"
-members = ["outbox-core", "outbox-postgres", "outbox-redis"]
+members = ["outbox-core", "outbox-kafka", "outbox-postgres", "outbox-redis"]
 
 [workspace.dependencies]
 async-trait = "0.1.89"
@@ -32,6 +32,7 @@ tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread", "sync", "
 sqlx = { version = "0.8.6", features = ["postgres", "runtime-tokio", "macros", "uuid", "time"] }
 redis = { version = "1.0.4", features = ["tokio-comp", "aio"] }
 moka = { version = "0.12.13", features = ["future"] }
+rdkafka = { version = "0.39.0", features = ["tokio"] }
 
 
 mockall = "0.14.0"

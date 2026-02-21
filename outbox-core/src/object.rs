@@ -1,4 +1,5 @@
 use uuid::Uuid;
+use serde::Serialize;
 
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
 #[cfg_attr(feature = "sqlx", sqlx(transparent))]
@@ -52,7 +53,7 @@ impl EventType {
 
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
 #[cfg_attr(feature = "sqlx", sqlx(transparent))]
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Payload(serde_json::Value);
 impl Payload {
     pub fn new(payload: serde_json::Value) -> Self {

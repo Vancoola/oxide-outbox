@@ -1,0 +1,21 @@
+[package]
+name = "outbox-kafka"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+rdkafka.workspace = true
+
+outbox-core = { version = "0.2.1", path = "../outbox-core" }
+serde_json.workspace = true
+
+[lints]
+workspace = true

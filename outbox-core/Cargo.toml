@@ -21,6 +21,7 @@ tokio.workspace = true
 tracing.workspace = true
 
 sqlx = { workspace = true, optional = true }
+serde.workspace = true
 
 [dev-dependencies]
 mockall.workspace = true
