@@ -2,16 +2,16 @@ use std::sync::Arc;
 use tracing::error;
 use crate::config::OutboxConfig;
 use crate::error::OutboxError;
-use crate::model::OutboxSlot;
-use crate::model::SlotStatus::Sent;
-use crate::object::SlotId;
-use crate::publisher::EventPublisher;
+use crate::model::Event;
+use crate::model::EventStatus::Sent;
+use crate::object::EventId;
+use crate::publisher::Transport;
 use crate::storage::OutboxStorage;
 
 pub struct OutboxProcessor<S, P>
 where
     S: OutboxStorage + Clone + 'static,
-    P: EventPublisher + Clone  + 'static,
+    P: Transport + Clone  + 'static,
 {
     storage: S,
     publisher: P,
@@ -21,7 +21,7 @@ where
 impl<S, P> OutboxProcessor<S, P>
 where
     S: OutboxStorage + Clone  + 'static,
-    P: EventPublisher + Clone  + 'static,
+    P: Transport + Clone  + 'static,
 {
 
     pub fn new(storage: S, publisher: P, config: Arc<OutboxConfig>) -> Self {
@@ -43,8 +43,8 @@ where
         Ok(count)
     }
 
-    async fn event_publish(&self, events: Vec<OutboxSlot>) -> Result<(), OutboxError> {
-        let mut success_ids = Vec::<SlotId>::new();
+    async fn event_publish(&self, events: Vec<Event>) -> Result<(), OutboxError> {
+        let mut success_ids = Vec::<EventId>::new();
         for event in events {
             match self.publisher.publish(event.event_type, event.payload).await {
                 Ok(()) => {

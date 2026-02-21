@@ -3,13 +3,13 @@ use uuid::Uuid;
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
 #[cfg_attr(feature = "sqlx", sqlx(transparent))]
 #[derive(Debug)]
-pub struct SlotId(Uuid);
-impl Default for SlotId {
+pub struct EventId(Uuid);
+impl Default for EventId {
     fn default() -> Self {
         Self(Uuid::new_v4())
     }
 }
-impl SlotId {
+impl EventId {
     pub fn load(id: Uuid) -> Self {
         Self(id)
     }

@@ -1,25 +1,25 @@
-use crate::object::{EventType, Payload, SlotId};
+use crate::object::{EventType, Payload, EventId};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
 #[cfg_attr(feature = "sqlx", derive(sqlx::FromRow))]
-pub struct OutboxSlot {
-    pub id: SlotId,
+pub struct Event {
+    pub id: EventId,
     pub event_type: EventType,
     pub payload: Payload,
     pub created_at: OffsetDateTime,
     pub locked_until: OffsetDateTime,
-    pub status: SlotStatus,
+    pub status: EventStatus,
 }
-impl OutboxSlot {
+impl Event {
     pub fn new(event_type: EventType, payload: Payload) -> Self {
         Self {
-            id: SlotId::default(),
+            id: EventId::default(),
             event_type,
             payload,
             created_at: OffsetDateTime::now_utc(),
             locked_until: OffsetDateTime::UNIX_EPOCH,
-            status: SlotStatus::Pending,
+            status: EventStatus::Pending,
         }
     }
     pub fn load(
@@ -28,10 +28,10 @@ impl OutboxSlot {
         payload: &serde_json::Value,
         created_at: OffsetDateTime,
         locked_until: OffsetDateTime,
-        status: &SlotStatus
+        status: &EventStatus
     ) -> Self {
         Self {
-            id: SlotId::load(id),
+            id: EventId::load(id),
             event_type: EventType::load(event_type),
             payload: Payload::load(payload),
             created_at,
@@ -47,7 +47,7 @@ impl OutboxSlot {
     sqlx(type_name = "status", rename_all = "PascalCase")
 )]
 #[derive(Clone)]
-pub enum SlotStatus {
+pub enum EventStatus {
     // Messages that need to be sent (including Pending and Failed)
     Pending,
     Processing,

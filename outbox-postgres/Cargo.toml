@@ -19,6 +19,7 @@ outbox-core = { version = "0.1.0", path="../outbox-core", features = ["sqlx"] }
 tracing.workspace = true
 
 uuid.workspace = true
+tokio.workspace = true
 
 [lints]
 workspace = true
