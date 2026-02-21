@@ -99,10 +99,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     info!("Inserting test event into DB...");
-    add_event(&writer, "OrderCreated", serde_json::json!({"id": 123}), None).await?;
+    add_event(&writer, "OrderCreated", serde_json::json!({"id": 123}), &config, || None).await?;
     tokio::time::sleep(Duration::from_secs(20)).await;
     info!("Inserting test 2 event into DB...");
-    add_event(&writer, "OrderCreated", serde_json::json!({"id": 321}), None).await?;
+    add_event(&writer, "OrderCreated", serde_json::json!({"id": 321}), &config, || None).await?;
     tokio::time::sleep(Duration::from_mins(2)).await;
     Ok(())
 }
@@ -117,3 +117,4 @@ impl Transport for TokioEventPublisher {
     }
 }
 ```
+
