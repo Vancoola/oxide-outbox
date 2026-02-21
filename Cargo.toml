@@ -11,7 +11,7 @@ readme = "README.md"
 
 [workspace]
 resolver = "2"
-members = ["outbox-core", "outbox-postgres", "outbox-redis", "example/outbox-in-memory", "example/distributed-deduplication"]
+members = ["outbox-core", "outbox-postgres", "outbox-redis"]
 
 [workspace.dependencies]
 async-trait = "0.1.89"
