@@ -20,14 +20,17 @@ impl EventId {
 
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
 #[cfg_attr(feature = "sqlx", sqlx(transparent))]
-#[derive(Debug)]
-pub struct IdempotencyToken(String);
+#[derive(Debug, Clone)]
+pub struct IdempotencyToken(pub String);
 impl IdempotencyToken {
     pub fn new(token: String) -> Self {
         Self(token)
     }
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+    pub fn as_bytes(&self) -> &[u8] {
+        self.0.as_bytes()
     }
 }
 

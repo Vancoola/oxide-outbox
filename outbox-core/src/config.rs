@@ -8,8 +8,7 @@ pub struct OutboxConfig {
     pub poll_interval_secs: u64,
     pub lock_timeout_mins: i64,
 
-    pub idempotency_strategy: IdempotencyStrategy,
-    pub idempotency_storage: IdempotencyStorage
+    pub idempotency_strategy: IdempotencyStrategy
 }
 
 impl Default for OutboxConfig {
@@ -20,26 +19,17 @@ impl Default for OutboxConfig {
             gc_interval_secs: 3600,
             poll_interval_secs: 10,
             lock_timeout_mins: 5,
-            idempotency_strategy: IdempotencyStrategy::None,
-            idempotency_storage: IdempotencyStorage::None
+            idempotency_strategy: IdempotencyStrategy::None
         }
     }
 }
 
 #[derive(Clone)]
 pub enum IdempotencyStrategy {
-    Provided(String),
+    Provided,
     Custom(fn(&Event) -> String),
-    Uuid, //Uuid V7
-    HashPayload, //BLAKE3
+    Uuid,
+    //TODO:
+    //HashPayload, //BLAKE3
     None,
-}
-
-#[derive(Clone)]
-pub enum IdempotencyStorage {
-    Moka, //in-memory
-    Redis(String),
-    //Database,
-    //e.g, Custom(dyn IdempotencyStorageEngine),
-    None
 }

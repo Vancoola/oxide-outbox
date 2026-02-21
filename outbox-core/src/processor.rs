@@ -1,34 +1,31 @@
-use std::sync::Arc;
-use tracing::error;
-use crate::config::OutboxConfig;
+use crate::config::{OutboxConfig};
 use crate::error::OutboxError;
 use crate::model::Event;
 use crate::model::EventStatus::Sent;
-use crate::object::EventId;
+use crate::object::{EventId};
 use crate::publisher::Transport;
 use crate::storage::OutboxStorage;
+use std::sync::Arc;
+use tracing::error;
 
-pub struct OutboxProcessor<S, P>
-where
-    S: OutboxStorage + Clone + 'static,
-    P: Transport + Clone  + 'static,
+pub struct OutboxProcessor<S, T>
 {
     storage: S,
-    publisher: P,
+    publisher: T,
     config: Arc<OutboxConfig>,
 }
 
-impl<S, P> OutboxProcessor<S, P>
+impl<S, T> OutboxProcessor<S, T>
 where
     S: OutboxStorage + Clone  + 'static,
-    P: Transport + Clone  + 'static,
+    T: Transport + Clone  + 'static,
 {
 
-    pub fn new(storage: S, publisher: P, config: Arc<OutboxConfig>) -> Self {
+    pub fn new(storage: S, publisher: T, config: Arc<OutboxConfig>) -> Self {
         Self {
             storage,
             publisher,
-            config
+            config,
         }
     }
 
@@ -65,6 +62,4 @@ where
 
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-}
+mod tests {}
