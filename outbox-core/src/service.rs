@@ -41,11 +41,10 @@ where
             .invoke(provided_token, get_event)
             .map(IdempotencyToken::new);
 
-        if let Some(ref token) = i_token {
-            if !self.idempotency_storage.try_reserve(token).await? {
+        if let Some(ref token) = i_token
+            && !self.idempotency_storage.try_reserve(token).await? {
                 return Err(OutboxError::DuplicateEvent);
             }
-        }
 
         let event = Event::new(EventType::new(event_type), Payload::new(payload), i_token);
         self.writer.insert_event(event).await

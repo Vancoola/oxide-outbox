@@ -16,13 +16,13 @@ pub struct RedisTokenProvider {
 impl RedisTokenProvider {
     pub async fn new(connection_info: &str, config: RedisTokenConfig) -> Result<Self, OutboxError> {
         let client = redis::Client::open(connection_info)
-            .map_err(|e| OutboxError::InfrastructureError(format!("Invalid Redis URL: {}", e)))?;
+            .map_err(|e| OutboxError::InfrastructureError(format!("Invalid Redis URL: {e}")))?;
         let conn = client
             .get_multiplexed_async_connection()
             .await
             .map_err(|e| {
                 error!("Redis connection failed: {:?}", e);
-                return OutboxError::InfrastructureError("Redis connection failed".to_string());
+                OutboxError::InfrastructureError("Redis connection failed".to_string())
             })?;
         Ok(Self {
             connection: conn,
@@ -59,7 +59,7 @@ impl IdempotencyStorageProvider for RedisTokenProvider {
             .await
             .map_err(|e| {
                 error!("Redis query failed: {:?}", e);
-                return OutboxError::InfrastructureError(e.to_string());
+                OutboxError::InfrastructureError(e.to_string())
             })?;
 
         let is_new = result.is_some();
