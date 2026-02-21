@@ -142,11 +142,12 @@ where
     async fn insert_event(&self, event: Event) -> Result<(), OutboxError> {
         sqlx::query(
             r"
-        INSERT INTO outbox_events (id, event_type, payload, status, created_at, locked_until)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO outbox_events (id, idempotency_token, event_type, payload, status, created_at, locked_until)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         ",
         )
             .bind(event.id.as_uuid())
+            .bind(event.idempotency_token)
             .bind(event.event_type.as_str())
             .bind(event.payload.as_json())
             .bind(event.status)

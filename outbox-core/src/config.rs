@@ -1,3 +1,5 @@
+use crate::model::Event;
+
 #[derive(Clone)]
 pub struct OutboxConfig {
     pub batch_size: u32,
@@ -5,6 +7,8 @@ pub struct OutboxConfig {
     pub gc_interval_secs: u64,
     pub poll_interval_secs: u64,
     pub lock_timeout_mins: i64,
+
+    pub idempotency_strategy: IdempotencyStrategy
 }
 
 impl Default for OutboxConfig {
@@ -15,6 +19,17 @@ impl Default for OutboxConfig {
             gc_interval_secs: 3600,
             poll_interval_secs: 10,
             lock_timeout_mins: 5,
+            idempotency_strategy: IdempotencyStrategy::None
         }
     }
+}
+
+#[derive(Clone)]
+pub enum IdempotencyStrategy {
+    Provided,
+    Custom(fn(&Event) -> String),
+    Uuid,
+    //TODO:
+    //HashPayload, //BLAKE3
+    None,
 }
