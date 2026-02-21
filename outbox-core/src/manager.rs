@@ -2,7 +2,7 @@ use crate::config::OutboxConfig;
 use crate::error::OutboxError;
 use crate::gc::GarbageCollector;
 use crate::processor::OutboxProcessor;
-use crate::publisher::EventPublisher;
+use crate::publisher::Transport;
 use crate::storage::OutboxStorage;
 use std::sync::Arc;
 use std::time::Duration;
@@ -18,7 +18,7 @@ pub struct OutboxManager<S, P> {
 impl<S, P> OutboxManager<S, P>
 where
     S: OutboxStorage + Clone + Send + Sync + 'static,
-    P: EventPublisher + Clone + Send + Sync + 'static,
+    P: Transport + Clone + Send + Sync + 'static,
 {
     pub fn new(storage: S, publisher: P, config: Arc<OutboxConfig>) -> Self {
         Self {
