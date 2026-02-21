@@ -19,10 +19,21 @@ A high-performance, flexible implementation of the **Transactional Outbox patter
 
 ## Project Structure
 
-- `outbox-core`: The heart of the library containing core logic, traits, and the `OutboxManager`.
-- `outbox-postgres`: Default implementation for PostgreSQL using `sqlx`.
+- `outbox-core`: Core logic, traits, and the `OutboxService`.
+- `outbox-postgres`: PostgreSQL implementation for event storage using `sqlx`.
+- `outbox-redis`: Redis-based idempotency provider with optional **Moka** L1 caching.
 
 ---
+
+## Distributed Idempotency & Safety
+
+Oxide Outbox provides a robust mechanism to handle duplicate requests at the edge. By using `OutboxService`, you can ensure that an event is only recorded once, even if the client retries the request.
+
+### Idempotency Strategies:
+- **`Provided`**: Use a token supplied by the client (e.g., `X-Idempotency-Key` header).
+- **`Uuid`**: Automatically generates a unique UUID v7 for every event.
+- **`Custom`**: Define your own logic to generate tokens based on the event data.
+- **`None`**: Skip deduplication checks (default).
 
 ## Installation
 
