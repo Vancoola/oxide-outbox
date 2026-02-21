@@ -60,9 +60,10 @@ outbox-redis = { version = "0.1", features = ["moka"] } # Optional Redis dedupli
 ## Reliability & Resilience
 
 - **At-Least-Once Delivery**: Messages are guaranteed to be delivered at least once. If a worker fails while processing an event, the message remains in the database.
-- **Lazy Retry (Visibility Timeout)**: When an event is picked up, it is assigned a `lock_until` timestamp. If the worker doesn't mark it as completed within the `lock_timeout_mins` (e.g., due to a crash), the event automatically becomes visible again for the next polling cycle or notification.
+- **Effectively-Once (Deduplication)**: By using the `RedisTokenProvider`, you can achieve "effectively once" semantics. Even if a client or a producer retries an event, the idempotency layer filters out duplicates before they reach your database.
+- **Fail-Open Idempotency**: If the Redis provider is unreachable, the system can be configured to allow the transaction to proceed, relying on the Database `UNIQUE` constraints as a final safety net.
+- **Lazy Retry (Visibility Timeout)**: When an event is picked up, it is assigned a `lock_until` timestamp. If the worker doesn't mark it as completed within the `lock_timeout_mins` (e.g., due to a crash), the event automatically becomes visible again for the next polling cycle.
 - **Transactional Integrity**: Since the outbox table lives in your business database, events are saved within the same ACID transaction as your business logic, ensuring they are never lost or orphaned.
-
 ---
 
 ## Quick Start
