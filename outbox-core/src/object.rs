@@ -26,6 +26,9 @@ impl IdempotencyToken {
     pub fn new(token: String) -> Self {
         Self(token)
     }
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]

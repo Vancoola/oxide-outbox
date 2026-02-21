@@ -1,3 +1,4 @@
+use crate::config::OutboxConfig;
 use crate::error::OutboxError;
 use crate::model::Event;
 use crate::object::{EventType, IdempotencyToken, Payload};
@@ -14,14 +15,18 @@ mod gc;
 mod manager;
 mod idempotency;
 
-pub async fn add_event<W: OutboxWriter>(
+pub async fn add_event<W, F>(
     writer: &W,
     event_type: &str,
     payload: serde_json::Value,
-    idempotency_token: Option<String>
-) -> Result<(), OutboxError> {
-
-    let i_token = match idempotency_token {
+    config: &OutboxConfig,
+    get_event: F,
+) -> Result<(), OutboxError>
+where
+    W: OutboxWriter,
+    F: FnOnce() -> Option<Event>,
+{
+    let i_token = match config.idempotency_strategy.invoke(get_event) {
         Some(i) => Some(IdempotencyToken::new(i)),
         None => None,
     };
