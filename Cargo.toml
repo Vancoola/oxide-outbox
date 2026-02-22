@@ -11,7 +11,7 @@ readme = "README.md"
 
 [workspace]
 resolver = "2"
-members = ["outbox-core", "outbox-kafka", "outbox-postgres", "outbox-redis", "example/*"]
+members = ["outbox-core", "outbox-postgres", "outbox-redis", "example/*"]
 
 [workspace.dependencies]
 async-trait = "0.1.89"
@@ -41,10 +41,10 @@ testcontainers = "0.26.3"
 testcontainers-modules = { version = "0.14.0", features = ["postgres"] }
 
 [workspace.lints.clippy]
-pedantic = "warn"
+pedantic = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
 must_use_candidate = "allow"
 unwrap_used = "deny"
-perf = "warn"
 panic = "deny"
 todo = "warn"
 unreachable = "warn"

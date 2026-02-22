@@ -58,7 +58,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let service = OutboxService::with_idempotency(writer, config.clone(), Arc::new(redis_provider));
 
-
     info!("Inserting test event into DB...");
     service
         .add_event(

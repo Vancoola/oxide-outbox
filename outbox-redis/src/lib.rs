@@ -14,6 +14,13 @@ pub struct RedisTokenProvider {
 }
 
 impl RedisTokenProvider {
+    /// Creates a new `RedisTokenProvider` and establishes a connection to Redis.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`OutboxError::InfrastructureError`] if:
+    /// - The `connection_info` string is not a valid Redis URL.
+    /// - The connection to the Redis server cannot be established.
     pub async fn new(connection_info: &str, config: RedisTokenConfig) -> Result<Self, OutboxError> {
         let client = redis::Client::open(connection_info)
             .map_err(|e| OutboxError::InfrastructureError(format!("Invalid Redis URL: {e}")))?;

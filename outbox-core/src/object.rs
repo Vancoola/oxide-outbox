@@ -1,5 +1,5 @@
-use uuid::Uuid;
 use serde::Serialize;
+use uuid::Uuid;
 
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
 #[cfg_attr(feature = "sqlx", sqlx(transparent))]
@@ -43,8 +43,8 @@ impl EventType {
     pub fn new(event_type: &str) -> Self {
         Self(event_type.to_string())
     }
-    pub fn load(value: &String) -> Self {
-        Self(value.clone())
+    pub fn load(value: &str) -> Self {
+        Self(value.to_owned())
     }
     pub fn as_str(&self) -> &str {
         &self.0
@@ -65,6 +65,11 @@ impl Payload {
     pub fn as_json(&self) -> &serde_json::Value {
         &self.0
     }
+    /// Creates a `Payload` from a static JSON string.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the provided string is not valid JSON.
     pub fn from_static_str(s: &'static str) -> Self {
         let val = serde_json::from_str(s).expect("Invalid JSON in static provider");
         Self(val)
