@@ -15,6 +15,7 @@ mod gc;
 mod manager;
 mod idempotency;
 mod service;
+mod dlq;
 
 /// # Warning
 /// This function performs a raw insert into the database WITHOUT checking the

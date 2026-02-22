@@ -35,7 +35,7 @@ where
         }
     }
 
-    pub async fn run(&mut self) -> Result<(), OutboxError> {
+    pub async fn run(self) -> Result<(), OutboxError> {
         let storage_for_listen = self.storage.clone();
         let processor = OutboxProcessor::new(
             self.storage.clone(),

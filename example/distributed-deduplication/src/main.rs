@@ -34,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let publisher = TokioEventPublisher(sender);
 
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
-    let mut outbox = OutboxManager::new(
+    let outbox = OutboxManager::new(
         Arc::new(storage),
         Arc::new(publisher),
         config.clone(),

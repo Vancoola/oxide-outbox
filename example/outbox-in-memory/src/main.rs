@@ -30,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let publisher = TokioEventPublisher(sender);
 
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
-    let mut outbox = OutboxManager::new(
+    let outbox = OutboxManager::new(
         Arc::new(storage),
         Arc::new(publisher),
         config.clone(),
@@ -65,14 +65,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
     tokio::time::sleep(Duration::from_secs(20)).await;
     info!("Inserting test 2 event into DB...");
-    service
+    if let Err(e) = service
         .add_event(
             "OrderCreated",
             serde_json::json!({"id": 321}),
             Some(String::from("r_token")),
             || None,
         )
-        .await?;
+        .await
+    {
+        error!("Deduplication error: {}", e);
+    }
     tokio::time::sleep(Duration::from_mins(2)).await;
 
     shutdown_tx.send(true)?;
