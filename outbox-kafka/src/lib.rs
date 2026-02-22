@@ -33,7 +33,7 @@ impl Transport for KafkaTransport {
         let bytes = serde_json::to_vec(&payload)
             .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
 
-        let record = FutureRecord::to(&self.config.topic.as_str())
+        let record = FutureRecord::to(self.config.topic.as_str())
             .payload(&bytes)
             .key(event_type.as_str());
 

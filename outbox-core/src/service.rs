@@ -56,12 +56,11 @@ where
             .invoke(provided_token, get_event)
             .map(IdempotencyToken::new);
 
-        if let Some(i_provider) = &self.idempotency_storage {
-            if let Some(ref token) = i_token
+        if let Some(i_provider) = &self.idempotency_storage
+            && let Some(ref token) = i_token
                 && !i_provider.try_reserve(token).await? {
                 return Err(OutboxError::DuplicateEvent);
             }
-        }
 
         let event = Event::new(EventType::new(event_type), Payload::new(payload), i_token);
         self.writer.insert_event(event).await

@@ -52,7 +52,7 @@ where
                 tokio::select! {
                     _ = interval.tick() => { let _ = gc.collect_garbage().await; }
                     _ = rx_gc.changed() => {
-                        if *rx_gc.borrow() == true {
+                        if *rx_gc.borrow() {
                             break
                         }
                     },
@@ -78,7 +78,7 @@ where
                     trace!("Checking for stale or pending events via interval");
                 }
                 _ = rx_listen.changed() => {
-                    if *rx_listen.borrow() == true {
+                    if *rx_listen.borrow() {
                         break
                     }
                 }
