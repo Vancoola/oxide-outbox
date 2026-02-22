@@ -10,18 +10,18 @@ use tracing::error;
 
 pub struct OutboxProcessor<S, T>
 {
-    storage: S,
-    publisher: T,
+    storage: Arc<S>,
+    publisher: Arc<T>,
     config: Arc<OutboxConfig>,
 }
 
 impl<S, T> OutboxProcessor<S, T>
 where
-    S: OutboxStorage + Clone  + 'static,
-    T: Transport + Clone  + 'static,
+    S: OutboxStorage + 'static,
+    T: Transport + 'static,
 {
 
-    pub fn new(storage: S, publisher: T, config: Arc<OutboxConfig>) -> Self {
+    pub fn new(storage: Arc<S>, publisher: Arc<T>, config: Arc<OutboxConfig>) -> Self {
         Self {
             storage,
             publisher,

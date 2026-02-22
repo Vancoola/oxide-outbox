@@ -30,7 +30,7 @@ impl Event {
     feature = "sqlx",
     sqlx(type_name = "status", rename_all = "PascalCase")
 )]
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum EventStatus {
     // Messages that need to be sent (including Pending and Failed)
     Pending,

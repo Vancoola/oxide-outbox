@@ -61,5 +61,6 @@ pub mod prelude {
 
     pub use crate::error::OutboxError;
 
+    #[allow(deprecated)]
     pub use crate::add_event;
 }

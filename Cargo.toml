@@ -11,7 +11,7 @@ readme = "README.md"
 
 [workspace]
 resolver = "2"
-members = ["outbox-core", "outbox-kafka", "outbox-postgres", "outbox-redis"]
+members = ["outbox-core", "outbox-kafka", "outbox-postgres", "outbox-redis", "example/*"]
 
 [workspace.dependencies]
 async-trait = "0.1.89"

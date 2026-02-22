@@ -1,18 +1,17 @@
+use std::sync::Arc;
 use crate::error::OutboxError;
 use crate::storage::OutboxStorage;
 
 pub(crate) struct GarbageCollector<S>
-where
-    S: OutboxStorage + Clone + 'static
 {
-    storage: S,
+    storage: Arc<S>,
 }
 
 impl<S> GarbageCollector<S>
 where
-    S: OutboxStorage + Clone + 'static
+    S: OutboxStorage + 'static
 {
-    pub fn new(storage: S) -> Self {
+    pub fn new(storage: Arc<S>) -> Self {
         Self {
             storage,
         }
