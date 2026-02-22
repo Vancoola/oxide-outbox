@@ -1,4 +1,4 @@
-use crate::object::{EventType, Payload, EventId, IdempotencyToken};
+use crate::object::{EventId, EventType, IdempotencyToken, Payload};
 use time::OffsetDateTime;
 
 #[cfg_attr(feature = "sqlx", derive(sqlx::FromRow))]
@@ -12,7 +12,11 @@ pub struct Event {
     pub status: EventStatus,
 }
 impl Event {
-    pub fn new(event_type: EventType, payload: Payload, idempotency_token: Option<IdempotencyToken>) -> Self {
+    pub fn new(
+        event_type: EventType,
+        payload: Payload,
+        idempotency_token: Option<IdempotencyToken>,
+    ) -> Self {
         Self {
             id: EventId::default(),
             idempotency_token,

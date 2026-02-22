@@ -35,6 +35,15 @@ where
         }
     }
 
+    /// Starts the main outbox worker loop.
+    ///
+    /// This method will run until a shutdown signal is received via the `shutdown_rx` channel.
+    /// It handles event processing, database notifications, and periodic garbage collection.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`OutboxError`] if the worker encounters a terminal failure that it cannot
+    /// recover from (though currently the loop primarily logs errors and continues).
     pub async fn run(self) -> Result<(), OutboxError> {
         let storage_for_listen = self.storage.clone();
         let processor = OutboxProcessor::new(
@@ -84,7 +93,9 @@ where
                 }
             }
             loop {
-                if *rx_listen.borrow() { return Ok(()); }
+                if *rx_listen.borrow() {
+                    return Ok(());
+                }
                 match processor.process_pending_events().await {
                     Ok(0) => break,
                     Ok(count) => debug!("Processed {} events", count),
@@ -101,6 +112,7 @@ where
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use crate::config::{IdempotencyStrategy, OutboxConfig};
     use crate::manager::OutboxManager;
@@ -108,10 +120,10 @@ mod tests {
     use crate::object::{EventType, Payload};
     use crate::publisher::MockTransport;
     use crate::storage::MockOutboxStorage;
+    use mockall::Sequence;
     use rstest::rstest;
     use serde_json::json;
     use std::sync::Arc;
-    use mockall::Sequence;
     use tokio::sync::watch;
 
     #[rstest]
@@ -133,9 +145,7 @@ mod tests {
 
         storage_mock
             .expect_wait_for_notification()
-            .returning(|_| {
-                Ok(())
-            });
+            .returning(|_| Ok(()));
 
         storage_mock
             .expect_fetch_next_to_process()
@@ -174,9 +184,7 @@ mod tests {
 
         storage_mock
             .expect_updates_status()
-            .withf(|ids, s|{
-                ids.len() == 4 && s == &EventStatus::Sent
-            })
+            .withf(|ids, s| ids.len() == 4 && s == &EventStatus::Sent)
             .returning(|_, _| Ok(()));
 
         let mut seq = Sequence::new();
@@ -197,7 +205,7 @@ mod tests {
                 .returning(|_, _| Ok(()));
         }
 
-        let mut manager = OutboxManager::new(
+        let manager = OutboxManager::new(
             Arc::new(storage_mock),
             Arc::new(transport_mock),
             Arc::new(config),

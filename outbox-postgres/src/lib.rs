@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use outbox_core::prelude::*;
+use sqlx::postgres::PgListener;
 use sqlx::types::uuid;
 use sqlx::{Executor, PgPool, Postgres};
 use std::sync::Arc;
-use sqlx::postgres::PgListener;
 use tokio::sync::Mutex;
 use tracing::debug;
 
@@ -57,17 +57,17 @@ impl OutboxStorage for PostgresOutbox {
                 locked_until
             ",
         )
-            .bind(i64::from(limit))
-            .bind(self.inner.config.lock_timeout_mins)
-            .fetch_all(&self.inner.pool)
-            .await
-            .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+        .bind(i64::from(limit))
+        .bind(self.inner.config.lock_timeout_mins)
+        .fetch_all(&self.inner.pool)
+        .await
+        .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
         Ok(record)
     }
 
     async fn updates_status(
         &self,
-        ids: &Vec<EventId>,
+        ids: &[EventId],
         status: EventStatus,
     ) -> Result<(), OutboxError> {
         let raw_ids: Vec<uuid::Uuid> = ids.iter().map(EventId::as_uuid).collect();
@@ -94,10 +94,10 @@ impl OutboxStorage for PostgresOutbox {
                 LIMIT 5000
             )",
         )
-            .bind(self.inner.config.retention_days)
-            .execute(&self.inner.pool)
-            .await
-            .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+        .bind(self.inner.config.retention_days)
+        .execute(&self.inner.pool)
+        .await
+        .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
         debug!(
             "Garbage collector: deleted {} old messages",
             result.rows_affected()
@@ -106,11 +106,10 @@ impl OutboxStorage for PostgresOutbox {
     }
 
     async fn wait_for_notification(&self, channel: &str) -> Result<(), OutboxError> {
-
         let mut guard = self.inner.listener.lock().await;
 
         if guard.is_none() {
-            let mut listener = sqlx::postgres::PgListener::connect_with(&self.inner.pool)
+            let mut listener = PgListener::connect_with(&self.inner.pool)
                 .await
                 .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
 
@@ -121,7 +120,12 @@ impl OutboxStorage for PostgresOutbox {
 
             *guard = Some(listener);
         }
-        match guard.as_mut().unwrap().recv().await {
+        match guard
+            .as_mut()
+            .expect("Listener initialized above")
+            .recv()
+            .await
+        {
             Ok(_) => Ok(()),
             Err(e) => {
                 *guard = None;
@@ -134,10 +138,10 @@ impl OutboxStorage for PostgresOutbox {
 pub struct PostgresWriter<E>(pub E);
 
 #[async_trait]
-impl<'a, E> OutboxWriter for PostgresWriter<E>
+impl<E> OutboxWriter for PostgresWriter<E>
 where
-        for<'c> &'c E: Executor<'c, Database = Postgres>,
-        E: Send + Sync,
+    for<'c> &'c E: Executor<'c, Database = Postgres>,
+    E: Send + Sync,
 {
     async fn insert_event(&self, event: Event) -> Result<(), OutboxError> {
         sqlx::query(

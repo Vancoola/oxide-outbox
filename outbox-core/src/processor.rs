@@ -1,15 +1,14 @@
-use crate::config::{OutboxConfig};
+use crate::config::OutboxConfig;
 use crate::error::OutboxError;
 use crate::model::Event;
 use crate::model::EventStatus::Sent;
-use crate::object::{EventId};
+use crate::object::EventId;
 use crate::publisher::Transport;
 use crate::storage::OutboxStorage;
 use std::sync::Arc;
 use tracing::error;
 
-pub struct OutboxProcessor<S, T>
-{
+pub struct OutboxProcessor<S, T> {
     storage: Arc<S>,
     publisher: Arc<T>,
     config: Arc<OutboxConfig>,
@@ -20,7 +19,6 @@ where
     S: OutboxStorage + 'static,
     T: Transport + 'static,
 {
-
     pub fn new(storage: Arc<S>, publisher: Arc<T>, config: Arc<OutboxConfig>) -> Self {
         Self {
             storage,
@@ -29,8 +27,14 @@ where
         }
     }
 
+    /// We receive the event batch and send it to Transport
+    /// # Errors
+    /// We may get a DB error during fetch or UPDATE. publish errors are only logged.
     pub async fn process_pending_events(&self) -> Result<usize, OutboxError> {
-        let events = self.storage.fetch_next_to_process(self.config.batch_size).await?;
+        let events = self
+            .storage
+            .fetch_next_to_process(self.config.batch_size)
+            .await?;
 
         if events.is_empty() {
             return Ok(0);
@@ -43,7 +47,11 @@ where
     async fn event_publish(&self, events: Vec<Event>) -> Result<(), OutboxError> {
         let mut success_ids = Vec::<EventId>::new();
         for event in events {
-            match self.publisher.publish(event.event_type, event.payload).await {
+            match self
+                .publisher
+                .publish(event.event_type, event.payload)
+                .await
+            {
                 Ok(()) => {
                     success_ids.push(event.id);
                 }
@@ -57,9 +65,7 @@ where
         }
         Ok(())
     }
-
 }
-
 
 #[cfg(test)]
 mod tests {}

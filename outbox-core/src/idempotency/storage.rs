@@ -1,6 +1,6 @@
-use async_trait::async_trait;
 use crate::error::OutboxError;
 use crate::object::IdempotencyToken;
+use async_trait::async_trait;
 
 #[async_trait]
 pub trait IdempotencyStorageProvider {

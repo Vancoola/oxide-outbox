@@ -8,7 +8,7 @@ pub struct OutboxConfig {
     pub poll_interval_secs: u64,
     pub lock_timeout_mins: i64,
 
-    pub idempotency_strategy: IdempotencyStrategy
+    pub idempotency_strategy: IdempotencyStrategy,
 }
 
 impl Default for OutboxConfig {
@@ -19,7 +19,7 @@ impl Default for OutboxConfig {
             gc_interval_secs: 3600,
             poll_interval_secs: 10,
             lock_timeout_mins: 5,
-            idempotency_strategy: IdempotencyStrategy::None
+            idempotency_strategy: IdempotencyStrategy::None,
         }
     }
 }
