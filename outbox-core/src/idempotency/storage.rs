@@ -3,7 +3,7 @@ use crate::object::IdempotencyToken;
 use async_trait::async_trait;
 
 #[async_trait]
-pub trait IdempotencyStorageProvider {
+pub trait IdempotencyStorageProvider: Send + Sync + 'static {
     async fn try_reserve(&self, token: &IdempotencyToken) -> Result<bool, OutboxError>;
 }
 

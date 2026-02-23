@@ -15,6 +15,7 @@ mod processor;
 mod publisher;
 mod service;
 mod storage;
+mod dlq;
 
 /// # Warning
 /// This function performs a raw insert into the database WITHOUT checking the

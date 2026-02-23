@@ -5,7 +5,7 @@ use async_trait::async_trait;
 
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
-pub trait OutboxStorage {
+pub trait OutboxStorage: Send + Sync + 'static {
     ///Returns all messages with the 'Pending' status
     async fn fetch_next_to_process(&self, limit: u32) -> Result<Vec<Event>, OutboxError>;
     async fn updates_status(&self, id: &[EventId], status: EventStatus) -> Result<(), OutboxError>;

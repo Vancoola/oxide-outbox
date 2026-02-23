@@ -18,8 +18,8 @@ pub struct OutboxManager<S, P> {
 
 impl<S, P> OutboxManager<S, P>
 where
-    S: OutboxStorage + Send + Sync + 'static,
-    P: Transport + Send + Sync + 'static,
+    S: OutboxStorage,
+    P: Transport,
 {
     pub fn new(
         storage: Arc<S>,

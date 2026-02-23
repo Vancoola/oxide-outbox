@@ -8,7 +8,7 @@ pub(crate) struct GarbageCollector<S> {
 
 impl<S> GarbageCollector<S>
 where
-    S: OutboxStorage + 'static,
+    S: OutboxStorage,
 {
     pub fn new(storage: Arc<S>) -> Self {
         Self { storage }

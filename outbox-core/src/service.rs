@@ -27,8 +27,8 @@ where
 
 impl<W, S> OutboxService<W, S>
 where
-    W: OutboxWriter + Send + Sync + 'static,
-    S: IdempotencyStorageProvider + Send + Sync + 'static,
+    W: OutboxWriter,
+    S: IdempotencyStorageProvider,
 {
     pub fn with_idempotency(
         writer: Arc<W>,
