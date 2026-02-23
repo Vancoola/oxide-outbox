@@ -16,8 +16,8 @@ pub struct OutboxProcessor<S, T> {
 
 impl<S, T> OutboxProcessor<S, T>
 where
-    S: OutboxStorage + 'static,
-    T: Transport + 'static,
+    S: OutboxStorage,
+    T: Transport,
 {
     pub fn new(storage: Arc<S>, publisher: Arc<T>, config: Arc<OutboxConfig>) -> Self {
         Self {
