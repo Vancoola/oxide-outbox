@@ -195,14 +195,14 @@ mod tests {
 
             transport_mock
                 .expect_publish()
-                .withf(move |event_type, payload| {
-                    let type_matches = event_type.as_str() == expected_type;
-                    let payload_matches = payload.as_json()["some"] == expected_val;
+                .withf(move |event| {
+                    let type_matches = event.event_type.as_str() == expected_type;
+                    let payload_matches = event.payload.as_json()["some"] == expected_val;
                     type_matches && payload_matches
                 })
                 .times(1)
                 .in_sequence(&mut seq)
-                .returning(|_, _| Ok(()));
+                .returning(|_| Ok(()));
         }
 
         let manager = OutboxManager::new(

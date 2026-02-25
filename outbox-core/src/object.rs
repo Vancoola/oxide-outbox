@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
 #[cfg_attr(feature = "sqlx", sqlx(transparent))]
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct EventId(Uuid);
 impl Default for EventId {
     fn default() -> Self {

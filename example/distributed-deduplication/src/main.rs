@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         while let Some(msg) = receiver.recv().await {
             info!(
                 "Event received in Broker: type={:?}, payload={:?}",
-                msg.0, msg.1
+                msg.0.event_type, msg.0.payload
             );
         }
     });
@@ -86,15 +86,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     shutdown_tx.send(true)?;
     Ok(())
 }
-struct Message(EventType, Payload);
+struct Message(Event);
 
 #[derive(Clone)]
 struct TokioEventPublisher(tokio::sync::mpsc::UnboundedSender<Message>);
 #[async_trait::async_trait]
 impl Transport for TokioEventPublisher {
-    async fn publish(&self, event_type: EventType, payload: Payload) -> Result<(), OutboxError> {
+    async fn publish(&self, event: Event) -> Result<(), OutboxError> {
         self.0
-            .send(Message(event_type, payload))
+            .send(Message(event))
             .map_err(|e| OutboxError::InfrastructureError(e.to_string()))
     }
 }

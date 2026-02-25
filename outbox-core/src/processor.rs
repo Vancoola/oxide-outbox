@@ -47,16 +47,13 @@ where
     async fn event_publish(&self, events: Vec<Event>) -> Result<(), OutboxError> {
         let mut success_ids = Vec::<EventId>::new();
         for event in events {
-            match self
-                .publisher
-                .publish(event.event_type, event.payload)
-                .await
-            {
+            let id = event.id;
+            match self.publisher.publish(event).await {
                 Ok(()) => {
-                    success_ids.push(event.id);
+                    success_ids.push(id);
                 }
                 Err(e) => {
-                    error!("Failed to publish event {:?}: {:?}", event.id, e);
+                    error!("Failed to publish event {:?}: {:?}", id, e);
                 }
             }
         }
