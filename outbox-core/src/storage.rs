@@ -18,7 +18,7 @@ where
     async fn wait_for_notification(&self, channel: &str) -> Result<(), OutboxError>;
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 pub trait OutboxWriter<P>
 where
     P: Debug + Clone + Serialize + Send + Sync,

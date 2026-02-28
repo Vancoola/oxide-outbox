@@ -67,6 +67,9 @@ where
                 tokio::select! {
                     _ = interval.tick() => { let _ = gc.collect_garbage().await; }
                     _ = rx_gc.changed() => {
+                            if rx_gc.has_changed().is_err(){
+                            break;
+                        }
                         if *rx_gc.borrow() {
                             break
                         }
@@ -93,6 +96,9 @@ where
                     trace!("Checking for stale or pending events via interval");
                 }
                 _ = rx_listen.changed() => {
+                    if rx_listen.has_changed().is_err(){
+                        break;
+                    }
                     if *rx_listen.borrow() {
                         break
                     }
@@ -113,6 +119,7 @@ where
                 }
             }
         }
+        debug!("Outbox worker loop stopped");
         Ok(())
     }
 }
