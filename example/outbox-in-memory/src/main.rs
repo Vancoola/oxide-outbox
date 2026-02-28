@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         gc_interval_secs: 10,
         poll_interval_secs: 100,
         lock_timeout_mins: 1,
-        idempotency_strategy: IdempotencyStrategy::Provided,
+        idempotency_strategy: IdempotencyStrategy::None,
     });
 
     let storage = PostgresOutbox::new(pool.clone(), config.clone());
@@ -64,7 +64,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             || None,
         )
         .await?;
-    tokio::time::sleep(Duration::from_secs(20)).await;
+    // tokio::time::sleep(Duration::from_secs(20)).await;
     info!("Inserting test 2 event into DB...");
     if let Err(e) = service
         .add_event(
