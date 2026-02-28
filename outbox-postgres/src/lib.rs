@@ -5,8 +5,7 @@ use sqlx::postgres::PgListener;
 use sqlx::types::uuid;
 use sqlx::{Executor, PgPool, Postgres};
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
-use serde::de::DeserializeOwned;
+use serde::{Serialize};
 use tokio::sync::Mutex;
 use tracing::debug;
 
