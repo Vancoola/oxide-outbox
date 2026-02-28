@@ -1,11 +1,11 @@
-use std::fmt::Debug;
 use async_trait::async_trait;
 use outbox_core::prelude::*;
+use serde::Serialize;
 use sqlx::postgres::PgListener;
 use sqlx::types::uuid;
 use sqlx::{Executor, PgPool, Postgres};
+use std::fmt::Debug;
 use std::sync::Arc;
-use serde::{Serialize};
 use tokio::sync::Mutex;
 use tracing::debug;
 

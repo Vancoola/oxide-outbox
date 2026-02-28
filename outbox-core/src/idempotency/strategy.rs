@@ -1,7 +1,7 @@
-use std::fmt::Debug;
-use serde::Serialize;
 use crate::config::IdempotencyStrategy;
 use crate::model::Event;
+use serde::Serialize;
+use std::fmt::Debug;
 
 impl<P> IdempotencyStrategy<P>
 where

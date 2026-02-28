@@ -1,4 +1,3 @@
-use std::fmt::Debug;
 use crate::config::OutboxConfig;
 use crate::error::OutboxError;
 use crate::model::Event;
@@ -6,8 +5,9 @@ use crate::model::EventStatus::Sent;
 use crate::object::EventId;
 use crate::publisher::Transport;
 use crate::storage::OutboxStorage;
-use std::sync::Arc;
 use serde::Serialize;
+use std::fmt::Debug;
+use std::sync::Arc;
 use tracing::error;
 
 pub struct OutboxProcessor<S, T, P>

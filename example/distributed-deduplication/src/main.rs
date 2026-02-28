@@ -2,12 +2,12 @@ use outbox_core::prelude::*;
 use outbox_postgres::{PostgresOutbox, PostgresWriter};
 use outbox_redis::RedisTokenProvider;
 use outbox_redis::config::RedisTokenConfig;
+use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::watch;
 use tracing::{Level, error, info};
-use serde::{Deserialize, Serialize};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
