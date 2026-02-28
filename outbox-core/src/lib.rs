@@ -1,9 +1,3 @@
-use crate::config::OutboxConfig;
-use crate::error::OutboxError;
-use crate::model::Event;
-use crate::object::{EventType, IdempotencyToken, Payload};
-use crate::storage::OutboxWriter;
-
 mod config;
 mod error;
 mod gc;
