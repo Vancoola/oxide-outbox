@@ -4,19 +4,25 @@ use crate::model::Event;
 use crate::object::{EventType, IdempotencyToken, Payload};
 use crate::prelude::{IdempotencyStorageProvider, OutboxConfig};
 use crate::storage::OutboxWriter;
+use serde::Serialize;
+use std::fmt::Debug;
 use std::sync::Arc;
 
-pub struct OutboxService<W, S> {
+pub struct OutboxService<W, S, P>
+where
+    P: Debug + Clone + Serialize + Send + Sync,
+{
     writer: Arc<W>,
-    config: Arc<OutboxConfig>,
+    config: Arc<OutboxConfig<P>>,
     idempotency_storage: Option<Arc<S>>,
 }
 
-impl<W> OutboxService<W, NoIdempotency>
+impl<W, P> OutboxService<W, NoIdempotency, P>
 where
-    W: OutboxWriter + Send + Sync + 'static,
+    W: OutboxWriter<P> + Send + Sync + 'static,
+    P: Debug + Clone + Serialize + Send + Sync,
 {
-    pub fn new(writer: Arc<W>, config: Arc<OutboxConfig>) -> Self {
+    pub fn new(writer: Arc<W>, config: Arc<OutboxConfig<P>>) -> Self {
         Self {
             writer,
             config,
@@ -25,14 +31,15 @@ where
     }
 }
 
-impl<W, S> OutboxService<W, S>
+impl<W, S, P> OutboxService<W, S, P>
 where
-    W: OutboxWriter,
-    S: IdempotencyStorageProvider,
+    W: OutboxWriter<P> + Send + Sync + 'static,
+    S: IdempotencyStorageProvider + Send + Sync + 'static,
+    P: Debug + Clone + Serialize + Send + Sync,
 {
     pub fn with_idempotency(
         writer: Arc<W>,
-        config: Arc<OutboxConfig>,
+        config: Arc<OutboxConfig<P>>,
         idempotency_storage: Arc<S>,
     ) -> Self {
         Self {
@@ -58,12 +65,13 @@ where
     pub async fn add_event<F>(
         &self,
         event_type: &str,
-        payload: serde_json::Value,
+        payload: P,
         provided_token: Option<String>,
         get_event: F,
     ) -> Result<(), OutboxError>
     where
-        F: FnOnce() -> Option<Event>,
+        F: FnOnce() -> Option<Event<P>>,
+        P: Debug + Clone + Serialize + Send + Sync,
     {
         let i_token = self
             .config
