@@ -14,7 +14,7 @@ categories = ["database"]
 [dependencies]
 sqlx.workspace = true
 async-trait.workspace = true
-outbox-core = { version = "0.2.0", path="../outbox-core", features = ["sqlx"] }
+outbox-core = { version = "0.3.0", path="../outbox-core", features = ["sqlx"] }
 
 tracing.workspace = true
 
