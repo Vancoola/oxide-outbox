@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::fmt::Debug;
 use uuid::Uuid;
 
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
@@ -54,24 +55,15 @@ impl EventType {
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
 #[cfg_attr(feature = "sqlx", sqlx(transparent))]
 #[derive(Debug, Serialize)]
-pub struct Payload(serde_json::Value);
-impl Payload {
-    pub fn new(payload: serde_json::Value) -> Self {
+pub struct Payload<T>(T);
+impl<T> Payload<T>
+where
+    T: Debug + Clone + Serialize + Send + Sync,
+{
+    pub fn new(payload: T) -> Self {
         Self(payload)
     }
-    pub fn load(value: &serde_json::Value) -> Self {
+    pub fn load(value: &T) -> Self {
         Self(value.clone())
-    }
-    pub fn as_json(&self) -> &serde_json::Value {
-        &self.0
-    }
-    /// Creates a `Payload` from a static JSON string.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the provided string is not valid JSON.
-    pub fn from_static_str(s: &'static str) -> Self {
-        let val = serde_json::from_str(s).expect("Invalid JSON in static provider");
-        Self(val)
     }
 }

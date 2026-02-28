@@ -1,17 +1,25 @@
 use crate::model::Event;
+use serde::Serialize;
+use std::fmt::Debug;
 
 #[derive(Clone)]
-pub struct OutboxConfig {
+pub struct OutboxConfig<P>
+where
+    P: Debug + Clone + Serialize,
+{
     pub batch_size: u32,
     pub retention_days: i64,
     pub gc_interval_secs: u64,
     pub poll_interval_secs: u64,
     pub lock_timeout_mins: i64,
 
-    pub idempotency_strategy: IdempotencyStrategy,
+    pub idempotency_strategy: IdempotencyStrategy<P>,
 }
 
-impl Default for OutboxConfig {
+impl<P> Default for OutboxConfig<P>
+where
+    P: Debug + Clone + Serialize,
+{
     fn default() -> Self {
         Self {
             batch_size: 100,
@@ -25,9 +33,12 @@ impl Default for OutboxConfig {
 }
 
 #[derive(Clone)]
-pub enum IdempotencyStrategy {
+pub enum IdempotencyStrategy<P>
+where
+    P: Debug + Clone + Serialize,
+{
     Provided,
-    Custom(fn(&Event) -> String),
+    Custom(fn(&Event<P>) -> String),
     Uuid,
     //TODO:
     //HashPayload, //BLAKE3
