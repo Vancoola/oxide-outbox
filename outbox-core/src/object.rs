@@ -67,4 +67,7 @@ where
     pub fn load(value: &T) -> Self {
         Self(value.clone())
     }
+    pub fn as_value(&self) -> &T {
+        &self.0
+    }
 }
