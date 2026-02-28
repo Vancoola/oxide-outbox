@@ -1,8 +1,8 @@
-use std::fmt::Debug;
 use crate::error::OutboxError;
 use crate::storage::OutboxStorage;
-use std::sync::Arc;
 use serde::Serialize;
+use std::fmt::Debug;
+use std::sync::Arc;
 
 pub(crate) struct GarbageCollector<S, P> {
     storage: Arc<S>,
@@ -15,7 +15,10 @@ where
     P: Debug + Clone + Serialize + Send + Sync,
 {
     pub fn new(storage: Arc<S>) -> Self {
-        Self { storage, _marker: std::marker::PhantomData }
+        Self {
+            storage,
+            _marker: std::marker::PhantomData,
+        }
     }
 
     pub async fn collect_garbage(&self) -> Result<(), OutboxError> {
