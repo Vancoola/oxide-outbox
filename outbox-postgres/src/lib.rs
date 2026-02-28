@@ -1,19 +1,27 @@
 use async_trait::async_trait;
 use outbox_core::prelude::*;
+use serde::Serialize;
 use sqlx::postgres::PgListener;
 use sqlx::types::uuid;
 use sqlx::{Executor, PgPool, Postgres};
+use std::fmt::Debug;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::debug;
 
 #[derive(Clone)]
-pub struct PostgresOutbox {
-    inner: Arc<PostgresOutboxInner>,
+pub struct PostgresOutbox<P>
+where
+    P: Debug + Clone + Serialize + Send + Sync,
+{
+    inner: Arc<PostgresOutboxInner<P>>,
 }
 
-impl PostgresOutbox {
-    pub fn new(pool: PgPool, config: Arc<OutboxConfig>) -> Self {
+impl<P> PostgresOutbox<P>
+where
+    P: Debug + Clone + Serialize + Send + Sync,
+{
+    pub fn new(pool: PgPool, config: Arc<OutboxConfig<P>>) -> Self {
         Self {
             inner: Arc::new(PostgresOutboxInner {
                 pool,
@@ -24,16 +32,22 @@ impl PostgresOutbox {
     }
 }
 
-struct PostgresOutboxInner {
+struct PostgresOutboxInner<P>
+where
+    P: Debug + Clone + Serialize + Send + Sync,
+{
     pool: PgPool,
-    config: Arc<OutboxConfig>,
+    config: Arc<OutboxConfig<P>>,
     listener: Mutex<Option<PgListener>>,
 }
 
 #[async_trait]
-impl OutboxStorage for PostgresOutbox {
-    async fn fetch_next_to_process(&self, limit: u32) -> Result<Vec<Event>, OutboxError> {
-        let record = sqlx::query_as::<_, Event>(
+impl<P> OutboxStorage<P> for PostgresOutbox<P>
+where
+    P: Debug + Clone + Serialize + Send + Sync + for<'de> serde::Deserialize<'de> + Unpin + 'static,
+{
+    async fn fetch_next_to_process(&self, limit: u32) -> Result<Vec<Event<P>>, OutboxError> {
+        let record = sqlx::query_as::<_, Event<P>>(
             r"
                 UPDATE outbox_events
                 SET status = 'Processing',
@@ -138,12 +152,13 @@ impl OutboxStorage for PostgresOutbox {
 pub struct PostgresWriter<E>(pub E);
 
 #[async_trait]
-impl<E> OutboxWriter for PostgresWriter<E>
+impl<E, P> OutboxWriter<P> for PostgresWriter<E>
 where
     for<'c> &'c E: Executor<'c, Database = Postgres>,
     E: Send + Sync,
+    P: Debug + Clone + Serialize + Send + Sync + 'static,
 {
-    async fn insert_event(&self, event: Event) -> Result<(), OutboxError> {
+    async fn insert_event(&self, event: Event<P>) -> Result<(), OutboxError> {
         sqlx::query(
             r"
         INSERT INTO outbox_events (id, idempotency_token, event_type, payload, status, created_at, locked_until)
@@ -153,7 +168,7 @@ where
             .bind(event.id.as_uuid())
             .bind(event.idempotency_token)
             .bind(event.event_type.as_str())
-            .bind(event.payload.as_json())
+            .bind(serde_json::to_value(&event.payload).map_err(|e| OutboxError::InfrastructureError(e.to_string()))?)
             .bind(event.status)
             .bind(event.created_at)
             .bind(event.locked_until)

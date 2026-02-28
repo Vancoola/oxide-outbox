@@ -5,21 +5,27 @@ use crate::model::EventStatus::Sent;
 use crate::object::EventId;
 use crate::publisher::Transport;
 use crate::storage::OutboxStorage;
+use serde::Serialize;
+use std::fmt::Debug;
 use std::sync::Arc;
 use tracing::error;
 
-pub struct OutboxProcessor<S, T> {
+pub struct OutboxProcessor<S, T, P>
+where
+    P: Debug + Clone + Serialize,
+{
     storage: Arc<S>,
     publisher: Arc<T>,
-    config: Arc<OutboxConfig>,
+    config: Arc<OutboxConfig<P>>,
 }
 
-impl<S, T> OutboxProcessor<S, T>
+impl<S, T, P> OutboxProcessor<S, T, P>
 where
-    S: OutboxStorage + 'static,
-    T: Transport + 'static,
+    S: OutboxStorage<P> + 'static,
+    T: Transport<P> + 'static,
+    P: Debug + Clone + Serialize + Send + Sync,
 {
-    pub fn new(storage: Arc<S>, publisher: Arc<T>, config: Arc<OutboxConfig>) -> Self {
+    pub fn new(storage: Arc<S>, publisher: Arc<T>, config: Arc<OutboxConfig<P>>) -> Self {
         Self {
             storage,
             publisher,
@@ -31,7 +37,7 @@ where
     /// # Errors
     /// We may get a DB error during fetch or UPDATE. publish errors are only logged.
     pub async fn process_pending_events(&self) -> Result<usize, OutboxError> {
-        let events = self
+        let events: Vec<Event<P>> = self
             .storage
             .fetch_next_to_process(self.config.batch_size)
             .await?;
@@ -44,7 +50,7 @@ where
         Ok(count)
     }
 
-    async fn event_publish(&self, events: Vec<Event>) -> Result<(), OutboxError> {
+    async fn event_publish(&self, events: Vec<Event<P>>) -> Result<(), OutboxError> {
         let mut success_ids = Vec::<EventId>::new();
         for event in events {
             let id = event.id;

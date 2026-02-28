@@ -1,7 +1,12 @@
 use crate::config::IdempotencyStrategy;
 use crate::model::Event;
+use serde::Serialize;
+use std::fmt::Debug;
 
-impl IdempotencyStrategy {
+impl<P> IdempotencyStrategy<P>
+where
+    P: Debug + Clone + Serialize,
+{
     /// Invokes the idempotency strategy to generate or retrieve a token.
     ///
     /// # Panics
@@ -10,7 +15,7 @@ impl IdempotencyStrategy {
     /// closure returns `None`.
     pub fn invoke<F>(&self, provided_token: Option<String>, get_event: F) -> Option<String>
     where
-        F: FnOnce() -> Option<Event>,
+        F: FnOnce() -> Option<Event<P>>,
     {
         match self {
             IdempotencyStrategy::Provided => provided_token,

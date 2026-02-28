@@ -1,20 +1,26 @@
 use crate::object::{EventId, EventType, IdempotencyToken, Payload};
+use serde::Serialize;
+use std::fmt::Debug;
 use time::OffsetDateTime;
 
 #[cfg_attr(feature = "sqlx", derive(sqlx::FromRow))]
-pub struct Event {
+pub struct Event<PT> {
     pub id: EventId,
     pub idempotency_token: Option<IdempotencyToken>,
     pub event_type: EventType,
-    pub payload: Payload,
+    #[cfg_attr(feature = "sqlx", sqlx(json))]
+    pub payload: Payload<PT>,
     pub created_at: OffsetDateTime,
     pub locked_until: OffsetDateTime,
     pub status: EventStatus,
 }
-impl Event {
+impl<PT> Event<PT>
+where
+    PT: Debug + Clone + Serialize,
+{
     pub fn new(
         event_type: EventType,
-        payload: Payload,
+        payload: Payload<PT>,
         idempotency_token: Option<IdempotencyToken>,
     ) -> Self {
         Self {

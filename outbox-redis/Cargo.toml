@@ -22,7 +22,7 @@ redis.workspace = true
 moka = { workspace = true, optional = true }
 async-trait.workspace = true
 
-outbox-core = { version = "0.2.0", path = "../outbox-core" }
+outbox-core = { version = "0.3.0", path = "../outbox-core" }
 
 tracing.workspace = true
 
