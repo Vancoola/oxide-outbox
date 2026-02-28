@@ -16,3 +16,4 @@ outbox-redis = { path = "../../outbox-redis", features = ["full"] }
 tracing = "0.1.44"
 tracing-subscriber = "0.3.22"
 serde_json = "1.0.149"
+serde = { version = "1.0.228", features = ["derive"] }

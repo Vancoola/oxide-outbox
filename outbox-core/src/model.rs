@@ -8,6 +8,7 @@ pub struct Event<PT> {
     pub id: EventId,
     pub idempotency_token: Option<IdempotencyToken>,
     pub event_type: EventType,
+    #[cfg_attr(feature = "sqlx", sqlx(json))]
     pub payload: Payload<PT>,
     pub created_at: OffsetDateTime,
     pub locked_until: OffsetDateTime,
