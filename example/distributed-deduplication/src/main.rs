@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::watch;
 use tracing::{Level, error, info};
+use serde::{Deserialize, Serialize};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -62,7 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     service
         .add_event(
             "OrderCreated",
-            serde_json::json!({"id": 123}),
+            MyEvent::HiOutbox("Hi!".into()),
             Some(String::from("r_token")),
             || None,
         )
@@ -72,7 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Err(e) = service
         .add_event(
             "OrderCreated",
-            serde_json::json!({"id": 123}),
+            MyEvent::HiOutbox("Hi!".into()),
             Some(String::from("r_token")),
             || None,
         )
@@ -86,13 +87,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     shutdown_tx.send(true)?;
     Ok(())
 }
-struct Message(Event);
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+enum MyEvent {
+    HiOutbox(String),
+}
+struct Message(Event<MyEvent>);
 
 #[derive(Clone)]
 struct TokioEventPublisher(tokio::sync::mpsc::UnboundedSender<Message>);
 #[async_trait::async_trait]
-impl Transport for TokioEventPublisher {
-    async fn publish(&self, event: Event) -> Result<(), OutboxError> {
+impl Transport<MyEvent> for TokioEventPublisher {
+    async fn publish(&self, event: Event<MyEvent>) -> Result<(), OutboxError> {
         self.0
             .send(Message(event))
             .map_err(|e| OutboxError::InfrastructureError(e.to_string()))
