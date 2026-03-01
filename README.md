@@ -1,6 +1,5 @@
 # Oxide Outbox 🦀
 
-[![Crates.io](https://img.shields.io/crates/v/outbox-core.svg)](https://crates.io/crates/outbox-core)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![PRs welocme](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
