@@ -1,13 +1,13 @@
 [package]
 name = "outbox-postgres"
-version = "0.2.0"
+version = "0.2.1"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 description = "PostgreSQL storage implementation for oxide-outbox using sqlx"
 repository = "https://github.com/Vancoola/oxide-outbox"
 documentation = "https://docs.rs/outbox-postgres"
-readme = "../README.md"
+readme = "README.md"
 keywords = ["outbox", "postgres", "sqlx", "transactional"]
 categories = ["database"]
 
