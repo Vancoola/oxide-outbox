@@ -4,6 +4,7 @@ use std::fmt::Debug;
 use time::OffsetDateTime;
 
 #[cfg_attr(feature = "sqlx", derive(sqlx::FromRow))]
+#[derive(Debug, Clone)]
 pub struct Event<PT> {
     pub id: EventId,
     pub idempotency_token: Option<IdempotencyToken>,
@@ -35,12 +36,12 @@ where
     }
 }
 
-#[cfg_attr(feature = "sqlx", derive(Debug, sqlx::Type))]
+#[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
 #[cfg_attr(
     feature = "sqlx",
     sqlx(type_name = "status", rename_all = "PascalCase")
 )]
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum EventStatus {
     // Messages that need to be sent (including Pending and Failed)
     Pending,

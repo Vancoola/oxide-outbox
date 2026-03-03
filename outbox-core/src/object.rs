@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
 #[cfg_attr(feature = "sqlx", sqlx(transparent))]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct EventId(Uuid);
 impl Default for EventId {
     fn default() -> Self {
@@ -38,7 +38,7 @@ impl IdempotencyToken {
 
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
 #[cfg_attr(feature = "sqlx", sqlx(transparent))]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EventType(String);
 impl EventType {
     pub fn new(event_type: &str) -> Self {
@@ -54,7 +54,7 @@ impl EventType {
 
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
 #[cfg_attr(feature = "sqlx", sqlx(transparent))]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Payload<T>(T);
 impl<T> Payload<T>

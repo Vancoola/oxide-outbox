@@ -113,7 +113,7 @@ where
                     Ok(count) => debug!("Processed {} events", count),
                     Err(e) => {
                         error!("Processing error: {}", e);
-                        tokio::time::sleep(Duration::from_secs(1)).await;
+                        tokio::time::sleep(Duration::from_secs(5)).await;
                         break;
                     }
                 }
@@ -128,6 +128,7 @@ where
 #[allow(clippy::unwrap_used)]
 mod tests {
     use crate::config::{IdempotencyStrategy, OutboxConfig};
+    use crate::error::OutboxError;
     use crate::manager::OutboxManager;
     use crate::model::{Event, EventStatus};
     use crate::object::EventType;
@@ -136,9 +137,14 @@ mod tests {
     use crate::storage::MockOutboxStorage;
     use mockall::Sequence;
     use rstest::rstest;
-    use serde_json::json;
+    use serde::{Deserialize, Serialize};
     use std::sync::Arc;
     use tokio::sync::watch;
+
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+    enum SomeDomainEvent {
+        SomeEvent(String),
+    }
 
     #[rstest]
     #[tokio::test]
@@ -152,8 +158,8 @@ mod tests {
             idempotency_strategy: IdempotencyStrategy::None,
         };
 
-        let mut storage_mock = MockOutboxStorage::new();
-        let mut transport_mock = MockTransport::new();
+        let mut storage_mock = MockOutboxStorage::<SomeDomainEvent>::new();
+        let mut transport_mock = MockTransport::<SomeDomainEvent>::new();
 
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
@@ -170,22 +176,22 @@ mod tests {
                 Ok(vec![
                     Event::new(
                         EventType::new("1"),
-                        Payload::new(json!({"some": "some1"})),
+                        Payload::new(SomeDomainEvent::SomeEvent("test1".to_string())),
                         None,
                     ),
                     Event::new(
                         EventType::new("2"),
-                        Payload::new(json!({"some": "some2"})),
+                        Payload::new(SomeDomainEvent::SomeEvent("test2".to_string())),
                         None,
                     ),
                     Event::new(
                         EventType::new("3"),
-                        Payload::new(json!({"some": "some3"})),
+                        Payload::new(SomeDomainEvent::SomeEvent("test3".to_string())),
                         None,
                     ),
                     Event::new(
                         EventType::new("4"),
-                        Payload::new(json!({"some": "some4"})),
+                        Payload::new(SomeDomainEvent::SomeEvent("test4".to_string())),
                         None,
                     ),
                 ])
@@ -205,15 +211,14 @@ mod tests {
 
         for i in 1..=4 {
             let expected_type = i.to_string();
-            let expected_val = json!(format!("some{}", i));
+            let expected_val = SomeDomainEvent::SomeEvent(format!("test{}", i));
 
             transport_mock
                 .expect_publish()
                 .withf(move |event| {
-                    // let type_matches = event.event_type.as_str() == expected_type;
-                    // let payload_matches = event.payload.as_json()["some"] == expected_val;
-                    // type_matches && payload_matches
-                    true
+                    let type_matches = event.event_type.as_str() == expected_type;
+                    let payload_matches = event.payload.as_value() == &expected_val;
+                    type_matches && payload_matches
                 })
                 .times(1)
                 .in_sequence(&mut seq)
@@ -235,5 +240,170 @@ mod tests {
             .await
             .expect("Manager did not stop in time")
             .unwrap();
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_recovery_after_storage_error() {
+        let mut storage_mock = MockOutboxStorage::<SomeDomainEvent>::new();
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+
+        storage_mock
+            .expect_wait_for_notification()
+            .times(1)
+            .returning(|_| Err(OutboxError::InfrastructureError("Connection lost".into())));
+
+        storage_mock
+            .expect_wait_for_notification()
+            .times(1)
+            .returning(move |_| {
+                let _ = shutdown_tx.send(true);
+                Ok(())
+            });
+
+        storage_mock
+            .expect_fetch_next_to_process()
+            .returning(|_| Ok(vec![]));
+
+        storage_mock
+            .expect_delete_garbage()
+            .times(1)
+            .returning(|| Ok(()));
+
+        let transport_mock = MockTransport::<SomeDomainEvent>::new();
+
+        let config = OutboxConfig::<SomeDomainEvent> {
+            batch_size: 100,
+            retention_days: 7,
+            gc_interval_secs: 3600,
+            poll_interval_secs: 5,
+            lock_timeout_mins: 5,
+            idempotency_strategy: IdempotencyStrategy::None,
+        };
+
+        let manager = OutboxManager::new(
+            Arc::new(storage_mock),
+            Arc::new(transport_mock),
+            Arc::new(config),
+            shutdown_rx,
+        );
+
+        let result = manager.run().await;
+        assert!(result.is_ok());
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_publish_failure() {
+        let mut storage_mock = MockOutboxStorage::<SomeDomainEvent>::new();
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+
+        let e1 = Event::new(
+            EventType::new("1"),
+            Payload::new(SomeDomainEvent::SomeEvent("test1".to_string())),
+            None,
+        );
+        let e2 = Event::new(
+            EventType::new("2"),
+            Payload::new(SomeDomainEvent::SomeEvent("test2".to_string())),
+            None,
+        );
+        let e3 = Event::new(
+            EventType::new("3"),
+            Payload::new(SomeDomainEvent::SomeEvent("test3".to_string())),
+            None,
+        );
+        let e4 = Event::new(
+            EventType::new("4"),
+            Payload::new(SomeDomainEvent::SomeEvent("test4".to_string())),
+            None,
+        );
+
+        let id1 = e1.id.clone();
+        let id2 = e2.id.clone();
+        let id3 = e3.id.clone();
+        let id4 = e4.id.clone();
+
+        storage_mock
+            .expect_wait_for_notification()
+            .returning(|_| Ok(()));
+
+        storage_mock
+            .expect_fetch_next_to_process()
+            .times(1)
+            .returning(move |_| Ok(vec![e1.clone(), e2.clone(), e3.clone(), e4.clone()]));
+
+        storage_mock
+            .expect_fetch_next_to_process()
+            .returning(|_| Ok(vec![]));
+
+        storage_mock.expect_delete_garbage().returning(|| Ok(()));
+
+        storage_mock
+            .expect_updates_status()
+            .withf(move |ids, status| {
+                if status != &EventStatus::Sent {
+                    return false;
+                }
+
+                let ids_set: std::collections::HashSet<_> = ids.iter().cloned().collect();
+
+                ids_set.len() == 3
+                    && ids_set.contains(&id1)
+                    && ids_set.contains(&id2)
+                    && ids_set.contains(&id4)
+                    && !ids_set.contains(&id3)
+            })
+            .returning(move |_, _| {
+                let _ = shutdown_tx.send(true);
+                Ok(())
+            });
+
+        let mut transport_mock = MockTransport::<SomeDomainEvent>::new();
+
+        let mut seq = Sequence::new();
+
+        transport_mock
+            .expect_publish()
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(|_| Ok(()));
+
+        transport_mock
+            .expect_publish()
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(|_| Ok(()));
+
+        transport_mock
+            .expect_publish()
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(|_| Err(OutboxError::InfrastructureError("Connection lost".into())));
+
+        transport_mock
+            .expect_publish()
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(|_| Ok(()));
+
+        let config = OutboxConfig::<SomeDomainEvent> {
+            batch_size: 100,
+            retention_days: 7,
+            gc_interval_secs: 3600,
+            poll_interval_secs: 5,
+            lock_timeout_mins: 5,
+            idempotency_strategy: IdempotencyStrategy::None,
+        };
+
+        let manager = OutboxManager::new(
+            Arc::new(storage_mock),
+            Arc::new(transport_mock),
+            Arc::new(config),
+            shutdown_rx,
+        );
+
+        let result = manager.run().await;
+        assert!(result.is_ok());
     }
 }
