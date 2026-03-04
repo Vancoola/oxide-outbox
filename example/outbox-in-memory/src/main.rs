@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
 use std::time::Duration;
+use async_trait::async_trait;
 use tokio::sync::watch;
 use tracing::{Level, error, info};
 
@@ -92,7 +93,7 @@ struct Message(Event<MyEvent>);
 
 #[derive(Clone)]
 struct TokioEventPublisher(tokio::sync::mpsc::UnboundedSender<Message>);
-#[async_trait::async_trait]
+#[async_trait]
 impl Transport<MyEvent> for TokioEventPublisher {
     async fn publish(&self, event: Event<MyEvent>) -> Result<(), OutboxError> {
         self.0
