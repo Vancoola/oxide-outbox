@@ -4,8 +4,6 @@ authors = ["Dennis S. Dale <dennis.s.dale@icloud.com>"]
 license = "MIT"
 repository = "https://github.com/Vancoola/oxide-outbox"
 homepage = "https://github.com/Vancoola/oxide-outbox"
-keywords = ["outbox", "transactional", "postgres", "event-driven"]
-categories = ["database", "asynchronous", "concurrency"]
 readme = "README.md"
 
 [workspace]
