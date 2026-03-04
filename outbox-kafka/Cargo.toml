@@ -6,8 +6,8 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-keywords.workspace = true
-categories.workspace = true
+keywords = ["outbox", "kafka", "transactional", "events", "rdkafka"]
+categories = ["database", "asynchronous", "network-programming"]
 readme = "README.md"
 
 [dependencies]
