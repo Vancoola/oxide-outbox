@@ -1,5 +1,6 @@
 [package]
 name = "outbox-kafka"
+description = "Kafka transport implementation for the oxide-outbox"
 version = "0.1.0"
 edition.workspace = true
 authors.workspace = true

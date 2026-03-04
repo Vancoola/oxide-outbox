@@ -1,6 +1,6 @@
 [package]
 name = "outbox-redis"
-description = "Redis-based idempotency provider for the oxide-outbox "
+description = "Redis-based idempotency provider for the oxide-outbox"
 version = "0.1.2"
 edition.workspace = true
 authors.workspace = true
