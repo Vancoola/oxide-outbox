@@ -1,0 +1,17 @@
+[package]
+name = "outbox-kafka"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "README.md"
+
+[dependencies]
+rdkafka.workspace = true
+
+[lints]
+workspace = true
