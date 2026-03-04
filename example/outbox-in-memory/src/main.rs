@@ -1,10 +1,10 @@
+use async_trait::async_trait;
 use outbox_core::prelude::*;
 use outbox_postgres::{PostgresOutbox, PostgresWriter};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
 use std::time::Duration;
-use async_trait::async_trait;
 use tokio::sync::watch;
 use tracing::{Level, error, info};
 
