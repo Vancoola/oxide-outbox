@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+#[derive(Debug)]
 pub struct RedisTokenConfig {
     pub ttl: Duration,
     pub key_prefix: String,

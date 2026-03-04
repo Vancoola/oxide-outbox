@@ -38,7 +38,7 @@ impl IdempotencyToken {
 
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
 #[cfg_attr(feature = "sqlx", sqlx(transparent))]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventType(String);
 impl EventType {
     pub fn new(event_type: &str) -> Self {
@@ -64,7 +64,7 @@ where
     pub fn new(payload: T) -> Self {
         Self(payload)
     }
-    pub fn load(value: &T) -> Self {
+    pub fn from_ref(value: &T) -> Self {
         Self(value.clone())
     }
     pub fn as_value(&self) -> &T {
