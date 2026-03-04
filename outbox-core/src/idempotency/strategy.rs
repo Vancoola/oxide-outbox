@@ -1,7 +1,5 @@
 use crate::config::IdempotencyStrategy;
 use crate::model::Event;
-use serde::Serialize;
-use std::fmt::Debug;
 
 impl<P> IdempotencyStrategy<P>
 where
@@ -13,7 +11,7 @@ where
     ///
     /// Panics if the strategy is set to `Custom`, but the provided `get_event`
     /// closure returns `None`.
-    pub fn invoke<F>(&self, provided_token: Option<String>, get_event: F) -> Option<String>
+    pub fn invoke<F>(&self, provided_token: Option<String>, get_event: F) -> Option<String> 
     where
         F: FnOnce() -> Option<Event<P>>,
     {

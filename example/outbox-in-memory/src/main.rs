@@ -65,7 +65,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             || None,
         )
         .await?;
-    // tokio::time::sleep(Duration::from_secs(20)).await;
     info!("Inserting test 2 event into DB...");
     if let Err(e) = service
         .add_event(
