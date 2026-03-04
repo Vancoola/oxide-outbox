@@ -1,5 +1,5 @@
 use crate::object::{EventId, EventType, IdempotencyToken, Payload};
-use serde::{Serialize};
+use serde::Serialize;
 use std::fmt::Debug;
 use time::OffsetDateTime;
 
