@@ -1,3 +1,4 @@
+use std::time::Duration;
 use crate::dlq::model::EventFail;
 use tokio::sync::{mpsc, watch};
 use crate::error::OutboxError;
@@ -15,7 +16,7 @@ impl DlqProcessor {
     }
 
     pub async fn run(mut self) -> Result<(), OutboxError> {
-
+        let mut interval = tokio::time::interval(Duration::from_secs(10));
         loop {
             tokio::select! {
                 _ = self.shutdown_rx.changed() => {
@@ -27,8 +28,14 @@ impl DlqProcessor {
                     }
                 }
 
+                _ = interval.tick() => {
+
+                }
+
                 event = self.source_rx.recv() => {
-                    if let Some(event) = event {}
+                    if let Some(event) = event {
+ 
+                    }
                 }
 
             }
