@@ -1,4 +1,5 @@
 mod config;
+mod dlq;
 mod error;
 mod gc;
 mod idempotency;
@@ -9,7 +10,6 @@ mod processor;
 mod publisher;
 mod service;
 mod storage;
-mod dlq;
 
 pub mod prelude {
     pub use crate::idempotency::storage::IdempotencyStorageProvider;

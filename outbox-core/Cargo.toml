@@ -23,13 +23,15 @@ tracing.workspace = true
 sqlx = { workspace = true, optional = true }
 serde.workspace = true
 
+metrics = { workspace = true, optional = true }
+
 [dev-dependencies]
 mockall.workspace = true
 rstest.workspace = true
 
 [features]
 default = []
-full = ["sqlx"]
+full = ["sqlx", "metrics"]
 
 [lints]
 workspace = true

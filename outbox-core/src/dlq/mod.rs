@@ -1,3 +1,3 @@
-pub mod processor;
 pub mod heap;
-mod model;
+pub mod model;
+pub mod processor;

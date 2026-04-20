@@ -31,6 +31,8 @@ redis = { version = "1.0.4", features = ["tokio-comp", "aio"] }
 moka = { version = "0.12.13", features = ["future"] }
 rdkafka = { version = "0.39.0", features = ["tokio"] }
 
+metrics = { version = "0.24.3" }
+
 
 mockall = "0.14.0"
 rstest = "0.26.1"

@@ -1,9 +1,10 @@
-use crate::config::OutboxConfig;
+use crate::dlq::processor::DlqProcessor;
 use crate::error::OutboxError;
 use crate::gc::GarbageCollector;
 use crate::processor::OutboxProcessor;
 use crate::publisher::Transport;
 use crate::storage::OutboxStorage;
+use crate::{config::OutboxConfig, dlq::model::EventFail};
 use serde::Serialize;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -79,8 +80,20 @@ where
         });
 
         let mut rx_listen = self.shutdown_rx.clone();
+        let rx_dlq = self.shutdown_rx.clone();
         let poll_interval = self.config.poll_interval_secs;
         let mut interval = tokio::time::interval(Duration::from_secs(poll_interval));
+        let (fail_tx, fail_rx) = tokio::sync::mpsc::unbounded_channel::<EventFail>();
+        let dlq_processor = DlqProcessor::new(fail_rx, rx_dlq);
+
+        info!("Starting DLQ processor");
+
+        tokio::spawn(async move {
+            if let Err(e) = dlq_processor.run().await {
+                error!("DLQ processor error: {}", e);
+            }
+        });
+
         info!("Outbox worker loop started");
 
         loop {
@@ -108,7 +121,7 @@ where
                 if *rx_listen.borrow() {
                     return Ok(());
                 }
-                match processor.process_pending_events().await {
+                match processor.process_pending_events(fail_tx.clone()).await {
                     Ok(0) => break,
                     Ok(count) => debug!("Processed {} events", count),
                     Err(e) => {
