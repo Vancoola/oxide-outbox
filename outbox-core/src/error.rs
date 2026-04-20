@@ -6,4 +6,8 @@ pub enum OutboxError {
     InfrastructureError(String),
     #[error("Duplicate error")]
     DuplicateEvent,
+    #[error("Database error: {0}")]
+    DatabaseError(String),
+    #[error("Broker error: {0}")]
+    BrokerError(String),
 }

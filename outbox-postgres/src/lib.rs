@@ -75,7 +75,7 @@ where
         .bind(self.inner.config.lock_timeout_mins)
         .fetch_all(&self.inner.pool)
         .await
-        .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+        .map_err(|e| OutboxError::DatabaseError(e.to_string()))?;
         Ok(record)
     }
 
@@ -91,7 +91,7 @@ where
             .bind(&raw_ids)
             .execute(&self.inner.pool)
             .await
-            .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+            .map_err(|e| OutboxError::DatabaseError(e.to_string()))?;
 
         Ok(())
     }
@@ -111,7 +111,7 @@ where
         .bind(self.inner.config.retention_days)
         .execute(&self.inner.pool)
         .await
-        .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+        .map_err(|e| OutboxError::DatabaseError(e.to_string()))?;
         debug!(
             "Garbage collector: deleted {} old messages",
             result.rows_affected()
@@ -125,12 +125,12 @@ where
         if guard.is_none() {
             let mut listener = PgListener::connect_with(&self.inner.pool)
                 .await
-                .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+                .map_err(|e| OutboxError::DatabaseError(e.to_string()))?;
 
             listener
                 .listen(channel)
                 .await
-                .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+                .map_err(|e| OutboxError::DatabaseError(e.to_string()))?;
 
             *guard = Some(listener);
         }
@@ -143,7 +143,7 @@ where
             Ok(_) => Ok(()),
             Err(e) => {
                 *guard = None;
-                Err(OutboxError::InfrastructureError(e.to_string()))
+                Err(OutboxError::DatabaseError(e.to_string()))
             }
         }
     }
@@ -168,13 +168,13 @@ where
             .bind(event.id.as_uuid())
             .bind(event.idempotency_token)
             .bind(event.event_type.as_str())
-            .bind(serde_json::to_value(&event.payload).map_err(|e| OutboxError::InfrastructureError(e.to_string()))?)
+            .bind(serde_json::to_value(&event.payload).map_err(|e| OutboxError::DatabaseError(e.to_string()))?)
             .bind(event.status)
             .bind(event.created_at)
             .bind(event.locked_until)
             .execute(&self.0)
             .await
-            .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+            .map_err(|e| OutboxError::DatabaseError(e.to_string()))?;
 
         Ok(())
     }
