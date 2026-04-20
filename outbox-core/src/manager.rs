@@ -1,10 +1,10 @@
-use crate::dlq::processor::DlqProcessor;
+use crate::dlq::storage::DlqHeap;
 use crate::error::OutboxError;
 use crate::gc::GarbageCollector;
 use crate::processor::OutboxProcessor;
 use crate::publisher::Transport;
 use crate::storage::OutboxStorage;
-use crate::{config::OutboxConfig, dlq::model::EventFail};
+use crate::{config::OutboxConfig};
 use serde::Serialize;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -14,25 +14,45 @@ use tracing::{debug, error, info, trace};
 
 pub struct OutboxManager<S, P, PT>
 where
-    PT: Debug + Clone + Serialize,
+    PT: Debug + Clone + Serialize
 {
     storage: Arc<S>,
     publisher: Arc<P>,
     config: Arc<OutboxConfig<PT>>,
     shutdown_rx: Receiver<bool>,
+    #[cfg(feature = "dlq")]
+    dlq_heap: Arc<dyn DlqHeap>
 }
 
 impl<S, P, PT> OutboxManager<S, P, PT>
 where
     S: OutboxStorage<PT> + Send + Sync + 'static,
     P: Transport<PT> + Send + Sync + 'static,
-    PT: Debug + Clone + Serialize + Send + Sync + 'static,
+    PT: Debug + Clone + Serialize + Send + Sync + 'static
 {
+    #[cfg(feature = "dlq")]
     pub fn new(
         storage: Arc<S>,
         publisher: Arc<P>,
         config: Arc<OutboxConfig<PT>>,
-        shutdown_rx: Receiver<bool>,
+        dlq_heap: Arc<dyn DlqHeap>,
+        shutdown_rx: Receiver<bool>
+    ) -> Self {
+        Self {
+            storage,
+            publisher,
+            config,
+            shutdown_rx,
+            dlq_heap
+        }
+    }
+
+    #[cfg(not(feature = "dlq"))]
+    pub fn new(
+        storage: Arc<S>,
+        publisher: Arc<P>,
+        config: Arc<OutboxConfig<PT>>,
+        shutdown_rx: Receiver<bool>
     ) -> Self {
         Self {
             storage,
@@ -80,19 +100,8 @@ where
         });
 
         let mut rx_listen = self.shutdown_rx.clone();
-        let rx_dlq = self.shutdown_rx.clone();
         let poll_interval = self.config.poll_interval_secs;
         let mut interval = tokio::time::interval(Duration::from_secs(poll_interval));
-        let (fail_tx, fail_rx) = tokio::sync::mpsc::unbounded_channel::<EventFail>();
-        let dlq_processor = DlqProcessor::new(fail_rx, rx_dlq);
-
-        info!("Starting DLQ processor");
-
-        tokio::spawn(async move {
-            if let Err(e) = dlq_processor.run().await {
-                error!("DLQ processor error: {}", e);
-            }
-        });
 
         info!("Outbox worker loop started");
 
@@ -121,7 +130,8 @@ where
                 if *rx_listen.borrow() {
                     return Ok(());
                 }
-                match processor.process_pending_events(fail_tx.clone()).await {
+                #[cfg(feature = "dlq")]
+                match processor.process_pending_events(self.dlq_heap.clone()).await {
                     Ok(0) => break,
                     Ok(count) => debug!("Processed {} events", count),
                     Err(e) => {
@@ -130,6 +140,17 @@ where
                         break;
                     }
                 }
+                #[cfg(not(feature = "dlq"))]
+                match processor.process_pending_events().await {
+                    Ok(0) => break,
+                    Ok(count) => debug!("Processed {} events", count),
+                    Err(e) => {
+                        error!("Processing error: {}", e);
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                        break;
+                    }
+                }
+
             }
         }
         debug!("Outbox worker loop stopped");
@@ -148,6 +169,7 @@ mod tests {
     use crate::prelude::Payload;
     use crate::publisher::MockTransport;
     use crate::storage::MockOutboxStorage;
+    use crate::dlq::storage::MockDlqHeap;
     use mockall::Sequence;
     use rstest::rstest;
     use serde::{Deserialize, Serialize};
@@ -173,6 +195,11 @@ mod tests {
 
         let mut storage_mock = MockOutboxStorage::<SomeDomainEvent>::new();
         let mut transport_mock = MockTransport::<SomeDomainEvent>::new();
+        let mut dlq_heap_mock: MockDlqHeap = MockDlqHeap::new();
+
+        dlq_heap_mock
+            .expect_record_success()
+            .returning(|_| Ok(()));
 
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
@@ -238,6 +265,16 @@ mod tests {
                 .returning(|_| Ok(()));
         }
 
+        #[cfg(feature = "dlq")]
+        let manager = OutboxManager::new(
+            Arc::new(storage_mock),
+            Arc::new(transport_mock),
+            Arc::new(config),
+            Arc::new(MockDlqHeap::new()),  // ← мок для dlq
+            shutdown_rx,
+        );
+
+        #[cfg(not(feature = "dlq"))]
         let manager = OutboxManager::new(
             Arc::new(storage_mock),
             Arc::new(transport_mock),
@@ -285,6 +322,12 @@ mod tests {
 
         let transport_mock = MockTransport::<SomeDomainEvent>::new();
 
+        let mut dlq_heap_mock: MockDlqHeap = MockDlqHeap::new();
+
+        dlq_heap_mock
+            .expect_record_success()
+            .returning(|_| Ok(()));
+
         let config = OutboxConfig::<SomeDomainEvent> {
             batch_size: 100,
             retention_days: 7,
@@ -294,6 +337,16 @@ mod tests {
             idempotency_strategy: IdempotencyStrategy::None,
         };
 
+        #[cfg(feature = "dlq")]
+        let manager = OutboxManager::new(
+            Arc::new(storage_mock),
+            Arc::new(transport_mock),
+            Arc::new(config),
+            Arc::new(MockDlqHeap::new()),  // ← мок для dlq
+            shutdown_rx,
+        );
+
+        #[cfg(not(feature = "dlq"))]
         let manager = OutboxManager::new(
             Arc::new(storage_mock),
             Arc::new(transport_mock),
@@ -409,6 +462,22 @@ mod tests {
             idempotency_strategy: IdempotencyStrategy::None,
         };
 
+        let mut dlq_heap_mock: MockDlqHeap = MockDlqHeap::new();
+
+        dlq_heap_mock
+            .expect_record_success()
+            .returning(|_| Ok(()));
+
+        #[cfg(feature = "dlq")]
+        let manager = OutboxManager::new(
+            Arc::new(storage_mock),
+            Arc::new(transport_mock),
+            Arc::new(config),
+            Arc::new(MockDlqHeap::new()),  // ← мок для dlq
+            shutdown_rx,
+        );
+
+        #[cfg(not(feature = "dlq"))]
         let manager = OutboxManager::new(
             Arc::new(storage_mock),
             Arc::new(transport_mock),

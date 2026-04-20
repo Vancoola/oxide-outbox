@@ -31,7 +31,8 @@ rstest.workspace = true
 
 [features]
 default = []
-full = ["sqlx", "metrics"]
+dlq = []
+full = ["sqlx", "metrics", "dlq"]
 
 [lints]
 workspace = true

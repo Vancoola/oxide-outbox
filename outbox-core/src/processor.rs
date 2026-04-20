@@ -1,5 +1,4 @@
 use crate::config::OutboxConfig;
-use crate::dlq::model::EventFail;
 use crate::error::OutboxError;
 use crate::model::Event;
 use crate::model::EventStatus::Sent;
@@ -9,8 +8,8 @@ use crate::storage::OutboxStorage;
 use serde::Serialize;
 use std::fmt::Debug;
 use std::sync::Arc;
-use tokio::sync::mpsc::UnboundedSender;
 use tracing::error;
+use crate::dlq::storage::DlqHeap;
 
 pub struct OutboxProcessor<S, T, P>
 where
@@ -40,7 +39,8 @@ where
     /// We may get a DB error during fetch or UPDATE. publish errors are only logged.
     pub async fn process_pending_events(
         &self,
-        fail_tx: UnboundedSender<EventFail>,
+        #[cfg(feature = "dlq")]
+        dlq_heap: Arc<dyn DlqHeap>
     ) -> Result<usize, OutboxError> {
         let events: Vec<Event<P>> = self
             .storage
@@ -51,14 +51,18 @@ where
             return Ok(0);
         }
         let count = events.len();
-        self.event_publish(events, fail_tx).await?;
+        #[cfg(feature = "dlq")]
+        self.event_publish(events, dlq_heap).await?;
+        #[cfg(not(feature = "dlq"))]
+        self.event_publish(events).await?;
         Ok(count)
     }
-
+    
     async fn event_publish(
         &self,
         events: Vec<Event<P>>,
-        fail_tx: UnboundedSender<EventFail>,
+        #[cfg(feature = "dlq")]
+        dlq_heap: Arc<dyn DlqHeap>
     ) -> Result<(), OutboxError> {
         let mut success_ids = Vec::<EventId>::new();
         for event in events {
@@ -72,6 +76,8 @@ where
             match self.publisher.publish(event).await {
                 Ok(()) => {
                     success_ids.push(id);
+                    #[cfg(feature = "dlq")]
+                    dlq_heap.record_success(id).await?;
                     #[cfg(feature = "metrics")]
                     {
                         let delta = start.elapsed().as_secs_f64();
@@ -91,10 +97,12 @@ where
                 }
                 Err(e) => {
                     error!("Failed to publish event {:?}: {:?}", id, e);
+                    #[cfg(feature = "dlq")]
+                    dlq_heap.record_success(id).await?;
+                    
                     #[cfg(feature = "metrics")]
                     {
                         let delta = start.elapsed().as_secs_f64();
-                        let event_type = event_type.clone();
 
                         metrics::counter!("outbox.events_total",
                             "status" => "error",
@@ -109,14 +117,6 @@ where
                         )
                         .record(delta);
                     }
-                    fail_tx
-                        .send(EventFail::new(id, e.to_string()))
-                        .map_err(|e| {
-                            OutboxError::InfrastructureError(format!(
-                                "Failed to send fail event: {:?}",
-                                e
-                            ))
-                        })?
                 }
             }
         }
