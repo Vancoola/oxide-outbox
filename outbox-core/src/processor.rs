@@ -9,7 +9,6 @@ use serde::Serialize;
 use std::fmt::Debug;
 use std::sync::Arc;
 use tracing::error;
-use crate::dlq::storage::DlqHeap;
 
 pub struct OutboxProcessor<S, T, P>
 where
@@ -40,7 +39,7 @@ where
     pub async fn process_pending_events(
         &self,
         #[cfg(feature = "dlq")]
-        dlq_heap: Arc<dyn DlqHeap>
+        dlq_heap: Arc<dyn crate::dlq::storage::DlqHeap>
     ) -> Result<usize, OutboxError> {
         let events: Vec<Event<P>> = self
             .storage
@@ -51,10 +50,12 @@ where
             return Ok(0);
         }
         let count = events.len();
+        
         #[cfg(feature = "dlq")]
         self.event_publish(events, dlq_heap).await?;
         #[cfg(not(feature = "dlq"))]
         self.event_publish(events).await?;
+        
         Ok(count)
     }
     
@@ -62,7 +63,7 @@ where
         &self,
         events: Vec<Event<P>>,
         #[cfg(feature = "dlq")]
-        dlq_heap: Arc<dyn DlqHeap>
+        dlq_heap: Arc<dyn crate::dlq::storage::DlqHeap>
     ) -> Result<(), OutboxError> {
         let mut success_ids = Vec::<EventId>::new();
         for event in events {
@@ -121,7 +122,7 @@ where
             }
         }
         if !success_ids.is_empty() {
-            self.storage.updates_status(&success_ids, Sent).await?;
+            self.storage.update_status(&success_ids, Sent).await?;
         }
         Ok(())
     }

@@ -10,4 +10,6 @@ pub enum OutboxError {
     DatabaseError(String),
     #[error("Broker error: {0}")]
     BrokerError(String),
+    #[error("Config error: {0}")]
+    ConfigError(String),
 }

@@ -1,4 +1,3 @@
-use crate::dlq::storage::DlqHeap;
 use crate::error::OutboxError;
 use crate::gc::GarbageCollector;
 use crate::processor::OutboxProcessor;
@@ -21,7 +20,7 @@ where
     config: Arc<OutboxConfig<PT>>,
     shutdown_rx: Receiver<bool>,
     #[cfg(feature = "dlq")]
-    dlq_heap: Arc<dyn DlqHeap>
+    dlq_heap: Arc<dyn crate::dlq::storage::DlqHeap>
 }
 
 impl<S, P, PT> OutboxManager<S, P, PT>
@@ -35,7 +34,7 @@ where
         storage: Arc<S>,
         publisher: Arc<P>,
         config: Arc<OutboxConfig<PT>>,
-        dlq_heap: Arc<dyn DlqHeap>,
+        dlq_heap: Arc<dyn crate::dlq::storage::DlqHeap>,
         shutdown_rx: Receiver<bool>
     ) -> Self {
         Self {
@@ -243,7 +242,7 @@ mod tests {
             .returning(move |_| Ok(vec![]));
 
         storage_mock
-            .expect_updates_status()
+            .expect_update_status()
             .withf(|ids, s| ids.len() == 4 && s == &EventStatus::Sent)
             .returning(|_, _| Ok(()));
 
@@ -406,7 +405,7 @@ mod tests {
         storage_mock.expect_delete_garbage().returning(|| Ok(()));
 
         storage_mock
-            .expect_updates_status()
+            .expect_update_status()
             .withf(move |ids, status| {
                 if status != &EventStatus::Sent {
                     return false;

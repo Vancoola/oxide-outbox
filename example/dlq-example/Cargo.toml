@@ -1,0 +1,18 @@
+[package]
+name = "dlq-example"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+
+[dependencies]
+tokio = { version = "1.49.0", features = ["full"] }
+async-trait = "0.1.89"
+outbox-core = { path = "../../outbox-core", features = ["dlq"] }
+outbox-postgres = { path = "../../outbox-postgres" }
+
+[lints]
+workspace = true

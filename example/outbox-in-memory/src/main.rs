@@ -32,12 +32,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let publisher = TokioEventPublisher(sender);
 
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
-    let outbox = OutboxManager::new(
-        Arc::new(storage),
-        Arc::new(publisher),
-        config.clone(),
-        shutdown_rx,
-    );
+    let outbox = OutboxManagerBuilder::new()
+        .storage(Arc::new(storage))
+        .publisher(Arc::new(publisher))
+        .config(config.clone())
+        .shutdown_rx(shutdown_rx)
+        .build()?;
+
 
     tokio::spawn(async move {
         if let Err(e) = outbox.run().await {

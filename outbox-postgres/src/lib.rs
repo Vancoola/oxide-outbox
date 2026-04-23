@@ -79,7 +79,7 @@ where
         Ok(record)
     }
 
-    async fn updates_status(
+    async fn update_status(
         &self,
         ids: &[EventId],
         status: EventStatus,
