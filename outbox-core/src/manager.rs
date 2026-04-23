@@ -162,7 +162,6 @@ where
 mod tests {
     use crate::config::{IdempotencyStrategy, OutboxConfig};
     use crate::error::OutboxError;
-    use crate::manager::OutboxManager;
     use crate::model::{Event, EventStatus};
     use crate::object::EventType;
     use crate::prelude::Payload;
@@ -174,6 +173,7 @@ mod tests {
     use serde::{Deserialize, Serialize};
     use std::sync::Arc;
     use tokio::sync::watch;
+    use crate::builder::OutboxManagerBuilder;
 
     #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
     enum SomeDomainEvent {
@@ -194,8 +194,11 @@ mod tests {
 
         let mut storage_mock = MockOutboxStorage::<SomeDomainEvent>::new();
         let mut transport_mock = MockTransport::<SomeDomainEvent>::new();
+
+        #[cfg(feature = "dlq")]
         let mut dlq_heap_mock: MockDlqHeap = MockDlqHeap::new();
 
+        #[cfg(feature = "dlq")]
         dlq_heap_mock
             .expect_record_success()
             .returning(|_| Ok(()));
@@ -265,21 +268,21 @@ mod tests {
         }
 
         #[cfg(feature = "dlq")]
-        let manager = OutboxManager::new(
-            Arc::new(storage_mock),
-            Arc::new(transport_mock),
-            Arc::new(config),
-            Arc::new(MockDlqHeap::new()),  // ← мок для dlq
-            shutdown_rx,
-        );
+        let manager = OutboxManagerBuilder::new()
+            .storage(Arc::new(storage_mock))
+            .publisher(Arc::new(transport_mock))
+            .config(Arc::new(config))
+            .shutdown_rx(shutdown_rx)
+            .dlq_heap(Arc::new(dlq_heap_mock))
+            .build().unwrap();
 
         #[cfg(not(feature = "dlq"))]
-        let manager = OutboxManager::new(
-            Arc::new(storage_mock),
-            Arc::new(transport_mock),
-            Arc::new(config),
-            shutdown_rx,
-        );
+        let manager = OutboxManagerBuilder::new()
+            .storage(Arc::new(storage_mock))
+            .publisher(Arc::new(transport_mock))
+            .config(Arc::new(config))
+            .shutdown_rx(shutdown_rx)
+            .build().unwrap();
 
         let handle = tokio::spawn(async move {
             manager.run().await.unwrap();
@@ -337,21 +340,21 @@ mod tests {
         };
 
         #[cfg(feature = "dlq")]
-        let manager = OutboxManager::new(
-            Arc::new(storage_mock),
-            Arc::new(transport_mock),
-            Arc::new(config),
-            Arc::new(MockDlqHeap::new()),  // ← мок для dlq
-            shutdown_rx,
-        );
+        let manager = OutboxManagerBuilder::new()
+            .storage(Arc::new(storage_mock))
+            .publisher(Arc::new(transport_mock))
+            .config(Arc::new(config))
+            .dlq_heap(Arc::new(dlq_heap_mock))
+            .shutdown_rx(shutdown_rx)
+            .build().unwrap();
 
         #[cfg(not(feature = "dlq"))]
-        let manager = OutboxManager::new(
-            Arc::new(storage_mock),
-            Arc::new(transport_mock),
-            Arc::new(config),
-            shutdown_rx,
-        );
+        let manager = OutboxManagerBuilder::new()
+            .storage(Arc::new(storage_mock))
+            .publisher(Arc::new(transport_mock))
+            .config(Arc::new(config))
+            .shutdown_rx(shutdown_rx)
+            .build().unwrap();
 
         let result = manager.run().await;
         assert!(result.is_ok());
@@ -468,21 +471,21 @@ mod tests {
             .returning(|_| Ok(()));
 
         #[cfg(feature = "dlq")]
-        let manager = OutboxManager::new(
-            Arc::new(storage_mock),
-            Arc::new(transport_mock),
-            Arc::new(config),
-            Arc::new(MockDlqHeap::new()),  // ← мок для dlq
-            shutdown_rx,
-        );
+        let manager = OutboxManagerBuilder::new()
+            .storage(Arc::new(storage_mock))
+            .publisher(Arc::new(transport_mock))
+            .config(Arc::new(config))
+            .dlq_heap(Arc::new(dlq_heap_mock))
+            .shutdown_rx(shutdown_rx)
+            .build().unwrap();
 
         #[cfg(not(feature = "dlq"))]
-        let manager = OutboxManager::new(
-            Arc::new(storage_mock),
-            Arc::new(transport_mock),
-            Arc::new(config),
-            shutdown_rx,
-        );
+        let manager = OutboxManagerBuilder::new()
+            .storage(Arc::new(storage_mock))
+            .publisher(Arc::new(transport_mock))
+            .config(Arc::new(config))
+            .shutdown_rx(shutdown_rx)
+            .build().unwrap();
 
         let result = manager.run().await;
         assert!(result.is_ok());
