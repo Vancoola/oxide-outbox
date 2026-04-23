@@ -41,7 +41,6 @@ where
     P: Transport<PT> + Send + Sync + 'static,
     PT: Debug + Clone + Serialize + Send + Sync + 'static,
 {
-
     pub fn new() -> Self {
         Self::default()
     }
@@ -71,32 +70,46 @@ where
     pub fn build(self) -> Result<OutboxManager<S, P, PT>, OutboxError> {
         #[cfg(feature = "dlq")]
         return Ok(OutboxManager::new(
-            self.storage.ok_or_else(|| OutboxError::ConfigError("Storage config is missing".to_string()))?,
-            self.publisher.ok_or_else(|| OutboxError::ConfigError("Publisher config is missing".to_string()))?,
-            self.config.ok_or_else(|| OutboxError::ConfigError("Config config is missing".to_string()))?,
-            self.dlq_heap.ok_or_else(|| OutboxError::ConfigError("Dlq heap config is missing".to_string()))?,
-            self.shutdown_rx.ok_or_else(|| OutboxError::ConfigError("Shutdown channel is missing".to_string()))?,
+            self.storage
+                .ok_or_else(|| OutboxError::ConfigError("Storage config is missing".to_string()))?,
+            self.publisher.ok_or_else(|| {
+                OutboxError::ConfigError("Publisher config is missing".to_string())
+            })?,
+            self.config
+                .ok_or_else(|| OutboxError::ConfigError("Config config is missing".to_string()))?,
+            self.dlq_heap.ok_or_else(|| {
+                OutboxError::ConfigError("Dlq heap config is missing".to_string())
+            })?,
+            self.shutdown_rx.ok_or_else(|| {
+                OutboxError::ConfigError("Shutdown channel is missing".to_string())
+            })?,
         ));
         #[cfg(not(feature = "dlq"))]
         return Ok(OutboxManager::new(
-            self.storage.ok_or_else(|| OutboxError::ConfigError("Storage config is missing".to_string()))?,
-            self.publisher.ok_or_else(|| OutboxError::ConfigError("Publisher config is missing".to_string()))?,
-            self.config.ok_or_else(|| OutboxError::ConfigError("Config config is missing".to_string()))?,
-            self.shutdown_rx.ok_or_else(|| OutboxError::ConfigError("Shutdown channel is missing".to_string()))?,
+            self.storage
+                .ok_or_else(|| OutboxError::ConfigError("Storage config is missing".to_string()))?,
+            self.publisher.ok_or_else(|| {
+                OutboxError::ConfigError("Publisher config is missing".to_string())
+            })?,
+            self.config
+                .ok_or_else(|| OutboxError::ConfigError("Config config is missing".to_string()))?,
+            self.shutdown_rx.ok_or_else(|| {
+                OutboxError::ConfigError("Shutdown channel is missing".to_string())
+            })?,
         ));
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use rstest::rstest;
-    use serde::Deserialize;
-    use tokio::sync::watch;
+    use super::*;
     use crate::config::IdempotencyStrategy;
     use crate::dlq::storage::MockDlqHeap;
     use crate::publisher::MockTransport;
     use crate::storage::MockOutboxStorage;
-    use super::*;
+    use rstest::rstest;
+    use serde::Deserialize;
+    use tokio::sync::watch;
 
     #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
     enum SomeDomainEvent {
@@ -105,7 +118,6 @@ mod tests {
 
     #[rstest]
     fn test_success_build() {
-
         let config = OutboxConfig {
             batch_size: 100,
             retention_days: 7,
@@ -121,7 +133,7 @@ mod tests {
         #[cfg(feature = "dlq")]
         let dlq_heap_mock: MockDlqHeap = MockDlqHeap::new();
 
-        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+        let (_shutdown_tx, shutdown_rx) = watch::channel(false);
 
         #[cfg(feature = "dlq")]
         let outbox_manager = OutboxManagerBuilder::new()
@@ -140,9 +152,7 @@ mod tests {
             .shutdown_rx(shutdown_rx)
             .build();
 
-
         assert!(outbox_manager.is_ok());
-
     }
 
     type Builder = OutboxManagerBuilder<
@@ -169,7 +179,14 @@ mod tests {
     }
 
     fn assert_config_error_with(
-        result: Result<OutboxManager<MockOutboxStorage<SomeDomainEvent>, MockTransport<SomeDomainEvent>, SomeDomainEvent>, OutboxError>,
+        result: Result<
+            OutboxManager<
+                MockOutboxStorage<SomeDomainEvent>,
+                MockTransport<SomeDomainEvent>,
+                SomeDomainEvent,
+            >,
+            OutboxError,
+        >,
         needle: &str,
     ) {
         match result {

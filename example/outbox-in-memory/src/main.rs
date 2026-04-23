@@ -39,7 +39,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .shutdown_rx(shutdown_rx)
         .build()?;
 
-
     tokio::spawn(async move {
         if let Err(e) = outbox.run().await {
             error!("Outbox critical error: {}", e);

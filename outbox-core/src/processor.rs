@@ -38,8 +38,7 @@ where
     /// We may get a DB error during fetch or UPDATE. publish errors are only logged.
     pub async fn process_pending_events(
         &self,
-        #[cfg(feature = "dlq")]
-        dlq_heap: Arc<dyn crate::dlq::storage::DlqHeap>
+        #[cfg(feature = "dlq")] dlq_heap: Arc<dyn crate::dlq::storage::DlqHeap>,
     ) -> Result<usize, OutboxError> {
         let events: Vec<Event<P>> = self
             .storage
@@ -50,20 +49,19 @@ where
             return Ok(0);
         }
         let count = events.len();
-        
+
         #[cfg(feature = "dlq")]
         self.event_publish(events, dlq_heap).await?;
         #[cfg(not(feature = "dlq"))]
         self.event_publish(events).await?;
-        
+
         Ok(count)
     }
-    
+
     async fn event_publish(
         &self,
         events: Vec<Event<P>>,
-        #[cfg(feature = "dlq")]
-        dlq_heap: Arc<dyn crate::dlq::storage::DlqHeap>
+        #[cfg(feature = "dlq")] dlq_heap: Arc<dyn crate::dlq::storage::DlqHeap>,
     ) -> Result<(), OutboxError> {
         let mut success_ids = Vec::<EventId>::new();
         for event in events {
@@ -100,7 +98,7 @@ where
                     error!("Failed to publish event {:?}: {:?}", id, e);
                     #[cfg(feature = "dlq")]
                     dlq_heap.record_failure(id).await?;
-                    
+
                     #[cfg(feature = "metrics")]
                     {
                         let delta = start.elapsed().as_secs_f64();
@@ -133,13 +131,13 @@ where
 mod tests {
     use super::*;
     use crate::config::{IdempotencyStrategy, OutboxConfig};
+    #[cfg(feature = "dlq")]
+    use crate::dlq::storage::MockDlqHeap;
     use crate::model::EventStatus;
     use crate::object::EventType;
     use crate::prelude::Payload;
     use crate::publisher::MockTransport;
     use crate::storage::MockOutboxStorage;
-    #[cfg(feature = "dlq")]
-    use crate::dlq::storage::MockDlqHeap;
     use mockall::Sequence;
     use rstest::rstest;
     use serde::{Deserialize, Serialize};
@@ -185,11 +183,7 @@ mod tests {
         storage.expect_update_status().times(0);
         transport.expect_publish().times(0);
 
-        let processor = OutboxProcessor::new(
-            Arc::new(storage),
-            Arc::new(transport),
-            config(),
-        );
+        let processor = OutboxProcessor::new(Arc::new(storage), Arc::new(transport), config());
 
         #[cfg(not(feature = "dlq"))]
         let result = processor.process_pending_events().await;
@@ -231,8 +225,7 @@ mod tests {
 
         transport.expect_publish().times(3).returning(|_| Ok(()));
 
-        let processor =
-            OutboxProcessor::new(Arc::new(storage), Arc::new(transport), config());
+        let processor = OutboxProcessor::new(Arc::new(storage), Arc::new(transport), config());
 
         #[cfg(not(feature = "dlq"))]
         let result = processor.process_pending_events().await;
@@ -296,8 +289,7 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(|_| Ok(()));
 
-        let processor =
-            OutboxProcessor::new(Arc::new(storage), Arc::new(transport), config());
+        let processor = OutboxProcessor::new(Arc::new(storage), Arc::new(transport), config());
 
         #[cfg(not(feature = "dlq"))]
         let result = processor.process_pending_events().await;
@@ -338,8 +330,7 @@ mod tests {
             .times(2)
             .returning(|_| Err(OutboxError::BrokerError("x".into())));
 
-        let processor =
-            OutboxProcessor::new(Arc::new(storage), Arc::new(transport), config());
+        let processor = OutboxProcessor::new(Arc::new(storage), Arc::new(transport), config());
 
         #[cfg(not(feature = "dlq"))]
         let result = processor.process_pending_events().await;
@@ -368,8 +359,7 @@ mod tests {
         storage.expect_update_status().times(0);
         transport.expect_publish().times(0);
 
-        let processor =
-            OutboxProcessor::new(Arc::new(storage), Arc::new(transport), config());
+        let processor = OutboxProcessor::new(Arc::new(storage), Arc::new(transport), config());
 
         #[cfg(not(feature = "dlq"))]
         let result = processor.process_pending_events().await;
@@ -402,8 +392,7 @@ mod tests {
 
         transport.expect_publish().times(1).returning(|_| Ok(()));
 
-        let processor =
-            OutboxProcessor::new(Arc::new(storage), Arc::new(transport), config());
+        let processor = OutboxProcessor::new(Arc::new(storage), Arc::new(transport), config());
 
         #[cfg(not(feature = "dlq"))]
         let result = processor.process_pending_events().await;

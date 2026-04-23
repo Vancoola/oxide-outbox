@@ -1,6 +1,6 @@
-use async_trait::async_trait;
 use crate::error::OutboxError;
 use crate::object::EventId;
+use async_trait::async_trait;
 
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]

@@ -1,3 +1,4 @@
+mod builder;
 mod config;
 mod dlq;
 mod error;
@@ -10,7 +11,6 @@ mod processor;
 mod publisher;
 mod service;
 mod storage;
-mod builder;
 
 pub mod prelude {
     pub use crate::idempotency::storage::IdempotencyStorageProvider;
@@ -25,6 +25,6 @@ pub mod prelude {
     pub use crate::model::{Event, EventStatus};
     pub use crate::object::{EventId, EventType, IdempotencyToken, Payload};
 
-    pub use crate::error::OutboxError;
     pub use crate::builder::OutboxManagerBuilder;
+    pub use crate::error::OutboxError;
 }

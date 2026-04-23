@@ -79,11 +79,7 @@ where
         Ok(record)
     }
 
-    async fn update_status(
-        &self,
-        ids: &[EventId],
-        status: EventStatus,
-    ) -> Result<(), OutboxError> {
+    async fn update_status(&self, ids: &[EventId], status: EventStatus) -> Result<(), OutboxError> {
         let raw_ids: Vec<uuid::Uuid> = ids.iter().map(EventId::as_uuid).collect();
 
         sqlx::query(r"UPDATE outbox_events SET status = $1 WHERE id = ANY($2)")

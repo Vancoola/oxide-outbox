@@ -1,9 +1,9 @@
+use crate::config::OutboxConfig;
 use crate::error::OutboxError;
 use crate::gc::GarbageCollector;
 use crate::processor::OutboxProcessor;
 use crate::publisher::Transport;
 use crate::storage::OutboxStorage;
-use crate::{config::OutboxConfig};
 use serde::Serialize;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -13,21 +13,21 @@ use tracing::{debug, error, info, trace};
 
 pub struct OutboxManager<S, P, PT>
 where
-    PT: Debug + Clone + Serialize
+    PT: Debug + Clone + Serialize,
 {
     storage: Arc<S>,
     publisher: Arc<P>,
     config: Arc<OutboxConfig<PT>>,
     shutdown_rx: Receiver<bool>,
     #[cfg(feature = "dlq")]
-    dlq_heap: Arc<dyn crate::dlq::storage::DlqHeap>
+    dlq_heap: Arc<dyn crate::dlq::storage::DlqHeap>,
 }
 
 impl<S, P, PT> OutboxManager<S, P, PT>
 where
     S: OutboxStorage<PT> + Send + Sync + 'static,
     P: Transport<PT> + Send + Sync + 'static,
-    PT: Debug + Clone + Serialize + Send + Sync + 'static
+    PT: Debug + Clone + Serialize + Send + Sync + 'static,
 {
     #[cfg(feature = "dlq")]
     pub fn new(
@@ -35,14 +35,14 @@ where
         publisher: Arc<P>,
         config: Arc<OutboxConfig<PT>>,
         dlq_heap: Arc<dyn crate::dlq::storage::DlqHeap>,
-        shutdown_rx: Receiver<bool>
+        shutdown_rx: Receiver<bool>,
     ) -> Self {
         Self {
             storage,
             publisher,
             config,
             shutdown_rx,
-            dlq_heap
+            dlq_heap,
         }
     }
 
@@ -51,7 +51,7 @@ where
         storage: Arc<S>,
         publisher: Arc<P>,
         config: Arc<OutboxConfig<PT>>,
-        shutdown_rx: Receiver<bool>
+        shutdown_rx: Receiver<bool>,
     ) -> Self {
         Self {
             storage,
@@ -130,7 +130,10 @@ where
                     return Ok(());
                 }
                 #[cfg(feature = "dlq")]
-                match processor.process_pending_events(self.dlq_heap.clone()).await {
+                match processor
+                    .process_pending_events(self.dlq_heap.clone())
+                    .await
+                {
                     Ok(0) => break,
                     Ok(count) => debug!("Processed {} events", count),
                     Err(e) => {
@@ -149,7 +152,6 @@ where
                         break;
                     }
                 }
-
             }
         }
         debug!("Outbox worker loop stopped");
@@ -160,20 +162,20 @@ where
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+    use crate::builder::OutboxManagerBuilder;
     use crate::config::{IdempotencyStrategy, OutboxConfig};
+    use crate::dlq::storage::MockDlqHeap;
     use crate::error::OutboxError;
     use crate::model::{Event, EventStatus};
     use crate::object::EventType;
     use crate::prelude::Payload;
     use crate::publisher::MockTransport;
     use crate::storage::MockOutboxStorage;
-    use crate::dlq::storage::MockDlqHeap;
     use mockall::Sequence;
     use rstest::rstest;
     use serde::{Deserialize, Serialize};
     use std::sync::Arc;
     use tokio::sync::watch;
-    use crate::builder::OutboxManagerBuilder;
 
     #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
     enum SomeDomainEvent {
@@ -199,9 +201,7 @@ mod tests {
         let mut dlq_heap_mock: MockDlqHeap = MockDlqHeap::new();
 
         #[cfg(feature = "dlq")]
-        dlq_heap_mock
-            .expect_record_success()
-            .returning(|_| Ok(()));
+        dlq_heap_mock.expect_record_success().returning(|_| Ok(()));
 
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
@@ -249,9 +249,7 @@ mod tests {
             .withf(|ids, s| ids.len() == 4 && s == &EventStatus::Sent)
             .returning(|_, _| Ok(()));
 
-        storage_mock
-            .expect_delete_garbage()
-            .returning(|| Ok(()));
+        storage_mock.expect_delete_garbage().returning(|| Ok(()));
 
         let mut seq = Sequence::new();
 
@@ -278,7 +276,8 @@ mod tests {
             .config(Arc::new(config))
             .shutdown_rx(shutdown_rx)
             .dlq_heap(Arc::new(dlq_heap_mock))
-            .build().unwrap();
+            .build()
+            .unwrap();
 
         #[cfg(not(feature = "dlq"))]
         let manager = OutboxManagerBuilder::new()
@@ -286,7 +285,8 @@ mod tests {
             .publisher(Arc::new(transport_mock))
             .config(Arc::new(config))
             .shutdown_rx(shutdown_rx)
-            .build().unwrap();
+            .build()
+            .unwrap();
 
         let handle = tokio::spawn(async move {
             manager.run().await.unwrap();
@@ -344,7 +344,8 @@ mod tests {
             .config(Arc::new(config))
             .dlq_heap(Arc::new(MockDlqHeap::new()))
             .shutdown_rx(shutdown_rx)
-            .build().unwrap();
+            .build()
+            .unwrap();
 
         #[cfg(not(feature = "dlq"))]
         let manager = OutboxManagerBuilder::new()
@@ -352,7 +353,8 @@ mod tests {
             .publisher(Arc::new(transport_mock))
             .config(Arc::new(config))
             .shutdown_rx(shutdown_rx)
-            .build().unwrap();
+            .build()
+            .unwrap();
 
         let result = manager.run().await;
         assert!(result.is_ok());
@@ -464,12 +466,8 @@ mod tests {
 
         let mut dlq_heap_mock: MockDlqHeap = MockDlqHeap::new();
 
-        dlq_heap_mock
-            .expect_record_success()
-            .returning(|_| Ok(()));
-        dlq_heap_mock
-            .expect_record_failure()
-            .returning(|_| Ok(0));
+        dlq_heap_mock.expect_record_success().returning(|_| Ok(()));
+        dlq_heap_mock.expect_record_failure().returning(|_| Ok(0));
 
         #[cfg(feature = "dlq")]
         let manager = OutboxManagerBuilder::new()
@@ -478,7 +476,8 @@ mod tests {
             .config(Arc::new(config))
             .dlq_heap(Arc::new(dlq_heap_mock))
             .shutdown_rx(shutdown_rx)
-            .build().unwrap();
+            .build()
+            .unwrap();
 
         #[cfg(not(feature = "dlq"))]
         let manager = OutboxManagerBuilder::new()
@@ -486,7 +485,8 @@ mod tests {
             .publisher(Arc::new(transport_mock))
             .config(Arc::new(config))
             .shutdown_rx(shutdown_rx)
-            .build().unwrap();
+            .build()
+            .unwrap();
 
         let result = manager.run().await;
         assert!(result.is_ok());
