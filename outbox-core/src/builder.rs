@@ -145,4 +145,132 @@ mod tests {
 
     }
 
+    type Builder = OutboxManagerBuilder<
+        MockOutboxStorage<SomeDomainEvent>,
+        MockTransport<SomeDomainEvent>,
+        SomeDomainEvent,
+    >;
+
+    fn default_config() -> Arc<OutboxConfig<SomeDomainEvent>> {
+        Arc::new(OutboxConfig {
+            batch_size: 100,
+            retention_days: 7,
+            gc_interval_secs: 3600,
+            poll_interval_secs: 5,
+            lock_timeout_mins: 5,
+            idempotency_strategy: IdempotencyStrategy::None,
+        })
+    }
+
+    #[rstest]
+    fn default_builder_fails_on_build_with_config_error() {
+        let result = Builder::default().build();
+        assert!(matches!(result, Err(OutboxError::ConfigError(_))));
+    }
+
+    fn assert_config_error_with(
+        result: Result<OutboxManager<MockOutboxStorage<SomeDomainEvent>, MockTransport<SomeDomainEvent>, SomeDomainEvent>, OutboxError>,
+        needle: &str,
+    ) {
+        match result {
+            Err(OutboxError::ConfigError(msg)) => {
+                assert!(msg.contains(needle), "expected '{needle}' in '{msg}'");
+            }
+            Err(other) => panic!("expected ConfigError, got {other:?}"),
+            Ok(_) => panic!("expected ConfigError, got Ok(..)"),
+        }
+    }
+
+    #[rstest]
+    fn new_matches_default() {
+        let r1 = Builder::new().build();
+        let r2 = Builder::default().build();
+        let m1 = match r1 {
+            Err(OutboxError::ConfigError(m)) => m,
+            _ => panic!("new().build() should fail with ConfigError"),
+        };
+        let m2 = match r2 {
+            Err(OutboxError::ConfigError(m)) => m,
+            _ => panic!("default().build() should fail with ConfigError"),
+        };
+        assert_eq!(m1, m2);
+    }
+
+    #[rstest]
+    fn build_fails_without_storage() {
+        let (_tx, rx) = watch::channel(false);
+        let b = Builder::new()
+            .publisher(Arc::new(MockTransport::new()))
+            .config(default_config())
+            .shutdown_rx(rx);
+        #[cfg(feature = "dlq")]
+        let b = b.dlq_heap(Arc::new(MockDlqHeap::new()));
+
+        assert_config_error_with(b.build(), "Storage");
+    }
+
+    #[rstest]
+    fn build_fails_without_publisher() {
+        let (_tx, rx) = watch::channel(false);
+        let b = Builder::new()
+            .storage(Arc::new(MockOutboxStorage::new()))
+            .config(default_config())
+            .shutdown_rx(rx);
+        #[cfg(feature = "dlq")]
+        let b = b.dlq_heap(Arc::new(MockDlqHeap::new()));
+
+        assert_config_error_with(b.build(), "Publisher");
+    }
+
+    #[rstest]
+    fn build_fails_without_config() {
+        let (_tx, rx) = watch::channel(false);
+        let b = Builder::new()
+            .storage(Arc::new(MockOutboxStorage::new()))
+            .publisher(Arc::new(MockTransport::new()))
+            .shutdown_rx(rx);
+        #[cfg(feature = "dlq")]
+        let b = b.dlq_heap(Arc::new(MockDlqHeap::new()));
+
+        assert_config_error_with(b.build(), "Config");
+    }
+
+    #[rstest]
+    fn build_fails_without_shutdown_rx() {
+        let b = Builder::new()
+            .storage(Arc::new(MockOutboxStorage::new()))
+            .publisher(Arc::new(MockTransport::new()))
+            .config(default_config());
+        #[cfg(feature = "dlq")]
+        let b = b.dlq_heap(Arc::new(MockDlqHeap::new()));
+
+        assert_config_error_with(b.build(), "Shutdown");
+    }
+
+    #[cfg(feature = "dlq")]
+    #[rstest]
+    fn build_fails_without_dlq_heap() {
+        let (_tx, rx) = watch::channel(false);
+        let result = Builder::new()
+            .storage(Arc::new(MockOutboxStorage::new()))
+            .publisher(Arc::new(MockTransport::new()))
+            .config(default_config())
+            .shutdown_rx(rx)
+            .build();
+        assert_config_error_with(result, "Dlq");
+    }
+
+    #[rstest]
+    fn build_is_insensitive_to_setter_order() {
+        let (_tx, rx) = watch::channel(false);
+        let b = Builder::new()
+            .shutdown_rx(rx)
+            .config(default_config())
+            .publisher(Arc::new(MockTransport::new()))
+            .storage(Arc::new(MockOutboxStorage::new()));
+        #[cfg(feature = "dlq")]
+        let b = b.dlq_heap(Arc::new(MockDlqHeap::new()));
+
+        assert!(b.build().is_ok());
+    }
 }

@@ -249,6 +249,10 @@ mod tests {
             .withf(|ids, s| ids.len() == 4 && s == &EventStatus::Sent)
             .returning(|_, _| Ok(()));
 
+        storage_mock
+            .expect_delete_garbage()
+            .returning(|| Ok(()));
+
         let mut seq = Sequence::new();
 
         for i in 1..=4 {
@@ -324,12 +328,6 @@ mod tests {
 
         let transport_mock = MockTransport::<SomeDomainEvent>::new();
 
-        let mut dlq_heap_mock: MockDlqHeap = MockDlqHeap::new();
-
-        dlq_heap_mock
-            .expect_record_success()
-            .returning(|_| Ok(()));
-
         let config = OutboxConfig::<SomeDomainEvent> {
             batch_size: 100,
             retention_days: 7,
@@ -344,7 +342,7 @@ mod tests {
             .storage(Arc::new(storage_mock))
             .publisher(Arc::new(transport_mock))
             .config(Arc::new(config))
-            .dlq_heap(Arc::new(dlq_heap_mock))
+            .dlq_heap(Arc::new(MockDlqHeap::new()))
             .shutdown_rx(shutdown_rx)
             .build().unwrap();
 
@@ -469,6 +467,9 @@ mod tests {
         dlq_heap_mock
             .expect_record_success()
             .returning(|_| Ok(()));
+        dlq_heap_mock
+            .expect_record_failure()
+            .returning(|_| Ok(0));
 
         #[cfg(feature = "dlq")]
         let manager = OutboxManagerBuilder::new()
