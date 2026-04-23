@@ -164,6 +164,7 @@ where
 mod tests {
     use crate::builder::OutboxManagerBuilder;
     use crate::config::{IdempotencyStrategy, OutboxConfig};
+    #[cfg(feature = "dlq")]
     use crate::dlq::storage::MockDlqHeap;
     use crate::error::OutboxError;
     use crate::model::{Event, EventStatus};
@@ -464,10 +465,13 @@ mod tests {
             idempotency_strategy: IdempotencyStrategy::None,
         };
 
-        let mut dlq_heap_mock: MockDlqHeap = MockDlqHeap::new();
-
-        dlq_heap_mock.expect_record_success().returning(|_| Ok(()));
-        dlq_heap_mock.expect_record_failure().returning(|_| Ok(0));
+        #[cfg(feature = "dlq")]
+        let dlq_heap_mock = {
+            let mut m = MockDlqHeap::new();
+            m.expect_record_success().returning(|_| Ok(()));
+            m.expect_record_failure().returning(|_| Ok(0));
+            m
+        };
 
         #[cfg(feature = "dlq")]
         let manager = OutboxManagerBuilder::new()
@@ -489,6 +493,207 @@ mod tests {
             .unwrap();
 
         let result = manager.run().await;
+        assert!(result.is_ok());
+    }
+
+    fn default_config() -> OutboxConfig<SomeDomainEvent> {
+        OutboxConfig {
+            batch_size: 100,
+            retention_days: 7,
+            gc_interval_secs: 3600,
+            poll_interval_secs: 5,
+            lock_timeout_mins: 5,
+            idempotency_strategy: IdempotencyStrategy::None,
+        }
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn shutdown_set_before_run_exits_without_fetch() {
+        let mut storage_mock = MockOutboxStorage::<SomeDomainEvent>::new();
+        let transport_mock = MockTransport::<SomeDomainEvent>::new();
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+        let _ = shutdown_tx.send(true);
+
+        storage_mock
+            .expect_wait_for_notification()
+            .returning(|_| Ok(()));
+        storage_mock.expect_delete_garbage().returning(|| Ok(()));
+        storage_mock.expect_fetch_next_to_process().times(0);
+        storage_mock.expect_update_status().times(0);
+
+        #[cfg(feature = "dlq")]
+        let manager = OutboxManagerBuilder::new()
+            .storage(Arc::new(storage_mock))
+            .publisher(Arc::new(transport_mock))
+            .config(Arc::new(default_config()))
+            .dlq_heap(Arc::new(MockDlqHeap::new()))
+            .shutdown_rx(shutdown_rx)
+            .build()
+            .unwrap();
+        #[cfg(not(feature = "dlq"))]
+        let manager = OutboxManagerBuilder::new()
+            .storage(Arc::new(storage_mock))
+            .publisher(Arc::new(transport_mock))
+            .config(Arc::new(default_config()))
+            .shutdown_rx(shutdown_rx)
+            .build()
+            .unwrap();
+
+        let result =
+            tokio::time::timeout(tokio::time::Duration::from_secs(1), manager.run())
+                .await
+                .expect("manager did not stop in time");
+        assert!(result.is_ok());
+        drop(shutdown_tx);
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn inner_loop_drains_until_empty_batch() {
+        let mut storage_mock = MockOutboxStorage::<SomeDomainEvent>::new();
+        let mut transport_mock = MockTransport::<SomeDomainEvent>::new();
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+
+        storage_mock
+            .expect_wait_for_notification()
+            .returning(|_| Ok(()));
+        storage_mock.expect_delete_garbage().returning(|| Ok(()));
+
+        let mut seq = Sequence::new();
+        storage_mock
+            .expect_fetch_next_to_process()
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(|_| {
+                Ok(vec![
+                    Event::new(
+                        EventType::new("a1"),
+                        Payload::new(SomeDomainEvent::SomeEvent("a1".into())),
+                        None,
+                    ),
+                    Event::new(
+                        EventType::new("a2"),
+                        Payload::new(SomeDomainEvent::SomeEvent("a2".into())),
+                        None,
+                    ),
+                ])
+            });
+        storage_mock
+            .expect_fetch_next_to_process()
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(|_| {
+                Ok(vec![Event::new(
+                    EventType::new("b1"),
+                    Payload::new(SomeDomainEvent::SomeEvent("b1".into())),
+                    None,
+                )])
+            });
+        storage_mock
+            .expect_fetch_next_to_process()
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(move |_| {
+                let _ = shutdown_tx.send(true);
+                Ok(vec![])
+            });
+        storage_mock
+            .expect_fetch_next_to_process()
+            .returning(|_| Ok(vec![]));
+
+        storage_mock
+            .expect_update_status()
+            .times(2)
+            .returning(|_, _| Ok(()));
+
+        transport_mock.expect_publish().times(3).returning(|_| Ok(()));
+
+        #[cfg(feature = "dlq")]
+        let manager = {
+            let mut dlq = MockDlqHeap::new();
+            dlq.expect_record_success().returning(|_| Ok(()));
+            dlq.expect_record_failure().returning(|_| Ok(0));
+            OutboxManagerBuilder::new()
+                .storage(Arc::new(storage_mock))
+                .publisher(Arc::new(transport_mock))
+                .config(Arc::new(default_config()))
+                .dlq_heap(Arc::new(dlq))
+                .shutdown_rx(shutdown_rx)
+                .build()
+                .unwrap()
+        };
+        #[cfg(not(feature = "dlq"))]
+        let manager = OutboxManagerBuilder::new()
+            .storage(Arc::new(storage_mock))
+            .publisher(Arc::new(transport_mock))
+            .config(Arc::new(default_config()))
+            .shutdown_rx(shutdown_rx)
+            .build()
+            .unwrap();
+
+        let handle = tokio::spawn(async move { manager.run().await.unwrap() });
+        tokio::time::timeout(tokio::time::Duration::from_secs(1), handle)
+            .await
+            .expect("manager did not stop in time")
+            .unwrap();
+    }
+
+    #[rstest]
+    #[tokio::test(start_paused = true)]
+    async fn fetch_error_inside_loop_is_recoverable() {
+        let mut storage_mock = MockOutboxStorage::<SomeDomainEvent>::new();
+        let transport_mock = MockTransport::<SomeDomainEvent>::new();
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+
+        storage_mock
+            .expect_wait_for_notification()
+            .returning(|_| Ok(()));
+        storage_mock.expect_delete_garbage().returning(|| Ok(()));
+
+        let mut seq = Sequence::new();
+        storage_mock
+            .expect_fetch_next_to_process()
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(|_| Err(OutboxError::DatabaseError("transient".into())));
+        storage_mock
+            .expect_fetch_next_to_process()
+            .in_sequence(&mut seq)
+            .returning(move |_| {
+                let _ = shutdown_tx.send(true);
+                Ok(vec![])
+            });
+        storage_mock
+            .expect_fetch_next_to_process()
+            .returning(|_| Ok(vec![]));
+
+        storage_mock.expect_update_status().times(0);
+
+        #[cfg(feature = "dlq")]
+        let manager = OutboxManagerBuilder::new()
+            .storage(Arc::new(storage_mock))
+            .publisher(Arc::new(transport_mock))
+            .config(Arc::new(default_config()))
+            .dlq_heap(Arc::new(MockDlqHeap::new()))
+            .shutdown_rx(shutdown_rx)
+            .build()
+            .unwrap();
+        #[cfg(not(feature = "dlq"))]
+        let manager = OutboxManagerBuilder::new()
+            .storage(Arc::new(storage_mock))
+            .publisher(Arc::new(transport_mock))
+            .config(Arc::new(default_config()))
+            .shutdown_rx(shutdown_rx)
+            .build()
+            .unwrap();
+
+        let result = tokio::time::timeout(
+            tokio::time::Duration::from_secs(30),
+            manager.run(),
+        )
+        .await
+        .expect("manager did not stop in time");
         assert!(result.is_ok());
     }
 }

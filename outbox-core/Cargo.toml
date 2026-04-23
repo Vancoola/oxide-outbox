@@ -28,6 +28,7 @@ metrics = { workspace = true, optional = true }
 [dev-dependencies]
 mockall.workspace = true
 rstest.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
 
 [features]
 default = []
