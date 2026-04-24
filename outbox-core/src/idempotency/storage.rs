@@ -2,6 +2,7 @@ use crate::error::OutboxError;
 use crate::object::IdempotencyToken;
 use async_trait::async_trait;
 
+#[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait IdempotencyStorageProvider {
     async fn try_reserve(&self, token: &IdempotencyToken) -> Result<bool, OutboxError>;

@@ -31,3 +31,120 @@ where
         }
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use crate::object::{EventType, Payload};
+    use rstest::rstest;
+    use serde::{Deserialize, Serialize};
+    use std::cell::Cell;
+
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+    struct TestPayload(String);
+
+    fn test_event() -> Event<TestPayload> {
+        Event::new(
+            EventType::new("t"),
+            Payload::new(TestPayload("p".into())),
+            None,
+        )
+    }
+
+    #[rstest]
+    fn provided_returns_passed_token() {
+        let s = IdempotencyStrategy::<TestPayload>::Provided;
+        assert_eq!(
+            s.invoke(Some("abc".into()), || None),
+            Some("abc".to_string())
+        );
+    }
+
+    #[rstest]
+    fn provided_returns_none_when_no_token_passed() {
+        let s = IdempotencyStrategy::<TestPayload>::Provided;
+        assert_eq!(s.invoke(None, || None), None);
+    }
+
+    #[rstest]
+    fn provided_does_not_invoke_get_event() {
+        let s = IdempotencyStrategy::<TestPayload>::Provided;
+        let _ = s.invoke(Some("x".into()), || panic!("get_event must not be called"));
+    }
+
+    #[rstest]
+    fn uuid_generates_non_empty_token() {
+        let s = IdempotencyStrategy::<TestPayload>::Uuid;
+        let token = s.invoke(None, || None).expect("Uuid must yield Some");
+        assert!(!token.is_empty());
+        // Должен парситься как UUID.
+        assert!(uuid::Uuid::parse_str(&token).is_ok(), "not a valid UUID: {token}");
+    }
+
+    #[rstest]
+    fn uuid_generates_unique_tokens_across_calls() {
+        let s = IdempotencyStrategy::<TestPayload>::Uuid;
+        let t1 = s.invoke(None, || None).unwrap();
+        let t2 = s.invoke(None, || None).unwrap();
+        assert_ne!(t1, t2);
+    }
+
+    #[rstest]
+    fn uuid_ignores_provided_token_and_does_not_invoke_get_event() {
+        let s = IdempotencyStrategy::<TestPayload>::Uuid;
+        let token = s
+            .invoke(Some("user-tok".into()), || {
+                panic!("get_event must not be called")
+            })
+            .unwrap();
+        assert_ne!(token, "user-tok");
+    }
+
+    #[rstest]
+    fn custom_invokes_closure_and_derives_token_from_event() {
+        fn derive(e: &Event<TestPayload>) -> String {
+            format!("d:{}", e.payload.as_value().0)
+        }
+        let s = IdempotencyStrategy::<TestPayload>::Custom(derive);
+        let called = Cell::new(false);
+        let result = s.invoke(None, || {
+            called.set(true);
+            Some(test_event())
+        });
+        assert!(called.get());
+        assert_eq!(result, Some("d:p".to_string()));
+    }
+
+    #[rstest]
+    fn custom_ignores_provided_token() {
+        fn derive(_: &Event<TestPayload>) -> String {
+            "from-closure".into()
+        }
+        let s = IdempotencyStrategy::<TestPayload>::Custom(derive);
+        let result = s.invoke(Some("user".into()), || Some(test_event()));
+        assert_eq!(result, Some("from-closure".to_string()));
+    }
+
+    #[rstest]
+    #[should_panic(expected = "Strategy is Custom, but no Event context provided")]
+    fn custom_panics_when_get_event_returns_none() {
+        fn derive(_: &Event<TestPayload>) -> String {
+            "x".into()
+        }
+        let s = IdempotencyStrategy::<TestPayload>::Custom(derive);
+        let _ = s.invoke(None, || None);
+    }
+
+    #[rstest]
+    fn none_returns_none_and_ignores_inputs() {
+        let s = IdempotencyStrategy::<TestPayload>::None;
+        assert_eq!(s.invoke(Some("x".into()), || None), None);
+    }
+
+    #[rstest]
+    fn none_does_not_invoke_get_event() {
+        let s = IdempotencyStrategy::<TestPayload>::None;
+        let _ = s.invoke(None, || panic!("get_event must not be called"));
+    }
+}

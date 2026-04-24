@@ -18,6 +18,7 @@ where
     async fn wait_for_notification(&self, channel: &str) -> Result<(), OutboxError>;
 }
 
+#[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait OutboxWriter<P>
 where
