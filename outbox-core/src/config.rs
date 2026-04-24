@@ -58,6 +58,19 @@ where
     /// How idempotency tokens are produced for newly written events. See
     /// [`IdempotencyStrategy`] for the available variants.
     pub idempotency_strategy: IdempotencyStrategy<P>,
+    /// Failure count at which an event becomes eligible for quarantine. Events
+    /// whose failure counter reaches this value are returned by
+    /// [`DlqHeap::drain_exceeded`](crate::dlq::storage::DlqHeap::drain_exceeded)
+    /// on the next reaper pass.
+    ///
+    /// Only consulted when the `dlq` feature is enabled.
+    pub dlq_threshold: u32,
+    /// Interval between dead-letter reaper passes, in seconds. Each pass drains
+    /// events that have crossed [`dlq_threshold`](Self::dlq_threshold) and hands
+    /// them off for quarantine.
+    ///
+    /// Only consulted when the `dlq` feature is enabled.
+    pub dlq_interval_secs: u64,
 }
 
 impl<P> Default for OutboxConfig<P>
@@ -76,6 +89,8 @@ where
     /// | `poll_interval_secs` | 10 |
     /// | `lock_timeout_mins` | 5 |
     /// | `idempotency_strategy` | [`IdempotencyStrategy::None`] |
+    /// | `dlq_threshold` | 10 |
+    /// | `dlq_interval_secs` | 300 |
     ///
     /// These values are part of the public contract — tuning them is a
     /// deliberate behaviour change.
@@ -87,6 +102,8 @@ where
             poll_interval_secs: 10,
             lock_timeout_mins: 5,
             idempotency_strategy: IdempotencyStrategy::None,
+            dlq_threshold: 10,
+            dlq_interval_secs: 300,
         }
     }
 }
@@ -178,6 +195,8 @@ mod tests {
             poll_interval_secs: 1,
             lock_timeout_mins: 2,
             idempotency_strategy: IdempotencyStrategy::Uuid,
+            dlq_threshold: 10,
+            dlq_interval_secs: 1,
         };
         let cloned = cfg.clone();
         assert_eq!(cloned.batch_size, 42);
@@ -185,6 +204,8 @@ mod tests {
         assert_eq!(cloned.gc_interval_secs, 99);
         assert_eq!(cloned.poll_interval_secs, 1);
         assert_eq!(cloned.lock_timeout_mins, 2);
+        assert_eq!(cloned.dlq_threshold, 10);
+        assert_eq!(cloned.dlq_interval_secs, 1);
         assert!(matches!(
             cloned.idempotency_strategy,
             IdempotencyStrategy::Uuid
@@ -203,6 +224,8 @@ mod tests {
             poll_interval_secs: 1,
             lock_timeout_mins: 1,
             idempotency_strategy: IdempotencyStrategy::Custom(derive),
+            dlq_threshold: 10,
+            dlq_interval_secs: 1,
         };
         let cloned = cfg.clone();
         match cloned.idempotency_strategy {

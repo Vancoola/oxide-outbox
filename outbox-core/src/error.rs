@@ -50,7 +50,6 @@ mod tests {
     use super::*;
     use rstest::rstest;
 
-
     #[rstest]
     fn display_infrastructure_error_includes_inner_message() {
         let e = OutboxError::InfrastructureError("redis down".into());

@@ -7,6 +7,7 @@
 //! the side. Construct one via [`OutboxManagerBuilder`](crate::builder::OutboxManagerBuilder).
 
 use crate::config::OutboxConfig;
+use crate::dlq::processor::DlqProcessor;
 use crate::error::OutboxError;
 use crate::gc::GarbageCollector;
 use crate::processor::OutboxProcessor;
@@ -177,6 +178,16 @@ where
             }
         });
 
+        #[cfg(feature = "dlq")]
+        {
+            let dlq_processor = DlqProcessor::new(
+                self.dlq_heap.clone(),
+                self.config.clone(),
+                self.shutdown_rx.clone(),
+            );
+            tokio::spawn(async move { dlq_processor.run().await });
+        }
+
         let mut rx_listen = self.shutdown_rx.clone();
         let poll_interval = self.config.poll_interval_secs;
         let mut interval = tokio::time::interval(Duration::from_secs(poll_interval));
@@ -272,6 +283,8 @@ mod tests {
             poll_interval_secs: 5,
             lock_timeout_mins: 5,
             idempotency_strategy: IdempotencyStrategy::None,
+            dlq_threshold: 10,
+            dlq_interval_secs: 1,
         };
 
         let mut storage_mock = MockOutboxStorage::<SomeDomainEvent>::new();
@@ -415,6 +428,8 @@ mod tests {
             poll_interval_secs: 5,
             lock_timeout_mins: 5,
             idempotency_strategy: IdempotencyStrategy::None,
+            dlq_threshold: 10,
+            dlq_interval_secs: 1,
         };
 
         #[cfg(feature = "dlq")]
@@ -542,6 +557,8 @@ mod tests {
             poll_interval_secs: 5,
             lock_timeout_mins: 5,
             idempotency_strategy: IdempotencyStrategy::None,
+            dlq_threshold: 10,
+            dlq_interval_secs: 1,
         };
 
         #[cfg(feature = "dlq")]
@@ -583,6 +600,8 @@ mod tests {
             poll_interval_secs: 5,
             lock_timeout_mins: 5,
             idempotency_strategy: IdempotencyStrategy::None,
+            dlq_threshold: 10,
+            dlq_interval_secs: 1,
         }
     }
 
@@ -619,10 +638,9 @@ mod tests {
             .build()
             .unwrap();
 
-        let result =
-            tokio::time::timeout(tokio::time::Duration::from_secs(1), manager.run())
-                .await
-                .expect("manager did not stop in time");
+        let result = tokio::time::timeout(tokio::time::Duration::from_secs(1), manager.run())
+            .await
+            .expect("manager did not stop in time");
         assert!(result.is_ok());
         drop(shutdown_tx);
     }
@@ -686,7 +704,10 @@ mod tests {
             .times(2)
             .returning(|_, _| Ok(()));
 
-        transport_mock.expect_publish().times(3).returning(|_| Ok(()));
+        transport_mock
+            .expect_publish()
+            .times(3)
+            .returning(|_| Ok(()));
 
         #[cfg(feature = "dlq")]
         let manager = {
@@ -767,12 +788,9 @@ mod tests {
             .build()
             .unwrap();
 
-        let result = tokio::time::timeout(
-            tokio::time::Duration::from_secs(30),
-            manager.run(),
-        )
-        .await
-        .expect("manager did not stop in time");
+        let result = tokio::time::timeout(tokio::time::Duration::from_secs(30), manager.run())
+            .await
+            .expect("manager did not stop in time");
         assert!(result.is_ok());
     }
 }

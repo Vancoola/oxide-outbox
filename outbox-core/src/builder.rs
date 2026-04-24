@@ -213,6 +213,7 @@ mod tests {
             poll_interval_secs: 5,
             lock_timeout_mins: 5,
             idempotency_strategy: IdempotencyStrategy::<SomeDomainEvent>::None,
+            ..Default::default()
         };
 
         let storage_mock = MockOutboxStorage::<SomeDomainEvent>::new();
@@ -257,6 +258,7 @@ mod tests {
             poll_interval_secs: 5,
             lock_timeout_mins: 5,
             idempotency_strategy: IdempotencyStrategy::None,
+            ..Default::default()
         })
     }
 

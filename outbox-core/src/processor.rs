@@ -192,6 +192,8 @@ mod tests {
             poll_interval_secs: 5,
             lock_timeout_mins: 5,
             idempotency_strategy: IdempotencyStrategy::None,
+            dlq_threshold: 10,
+            dlq_interval_secs: 1,
         })
     }
 

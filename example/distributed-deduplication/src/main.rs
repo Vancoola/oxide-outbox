@@ -24,6 +24,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         poll_interval_secs: 100,
         lock_timeout_mins: 1,
         idempotency_strategy: IdempotencyStrategy::Provided,
+        dlq_threshold: 10,
+        dlq_interval_secs: 300,
     });
     let regis_config = RedisTokenConfig::default();
 

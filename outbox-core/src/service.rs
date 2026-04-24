@@ -187,6 +187,8 @@ mod tests {
             poll_interval_secs: 10,
             lock_timeout_mins: 5,
             idempotency_strategy: strategy,
+            dlq_threshold: 10,
+            dlq_interval_secs: 1,
         })
     }
 
@@ -231,17 +233,14 @@ mod tests {
         let mut idem = MockIdempotencyStorageProvider::new();
 
         // Захватим токен из reserve и убедимся, что тот же приедет в insert.
-        let reserved: Arc<std::sync::Mutex<Option<String>>> =
-            Arc::new(std::sync::Mutex::new(None));
+        let reserved: Arc<std::sync::Mutex<Option<String>>> = Arc::new(std::sync::Mutex::new(None));
         let reserved_r = reserved.clone();
         let reserved_w = reserved.clone();
 
-        idem.expect_try_reserve()
-            .times(1)
-            .returning(move |tok| {
-                *reserved_r.lock().unwrap() = Some(tok.as_str().to_owned());
-                Ok(true)
-            });
+        idem.expect_try_reserve().times(1).returning(move |tok| {
+            *reserved_r.lock().unwrap() = Some(tok.as_str().to_owned());
+            Ok(true)
+        });
 
         writer
             .expect_insert_event()
@@ -385,9 +384,7 @@ mod tests {
         let mut writer = MockOutboxWriter::<TestPayload>::new();
         let mut idem = MockIdempotencyStorageProvider::new();
 
-        idem.expect_try_reserve()
-            .times(1)
-            .returning(|_| Ok(false));
+        idem.expect_try_reserve().times(1).returning(|_| Ok(false));
         writer.expect_insert_event().times(0);
 
         let service = OutboxService::with_idempotency(
@@ -427,9 +424,7 @@ mod tests {
         let mut writer = MockOutboxWriter::<TestPayload>::new();
         let mut idem = MockIdempotencyStorageProvider::new();
 
-        idem.expect_try_reserve()
-            .times(1)
-            .returning(|_| Ok(true));
+        idem.expect_try_reserve().times(1).returning(|_| Ok(true));
         writer
             .expect_insert_event()
             .times(1)

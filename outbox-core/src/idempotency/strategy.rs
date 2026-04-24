@@ -104,7 +104,10 @@ mod tests {
         let token = s.invoke(None, || None).expect("Uuid must yield Some");
         assert!(!token.is_empty());
         // Должен парситься как UUID.
-        assert!(uuid::Uuid::parse_str(&token).is_ok(), "not a valid UUID: {token}");
+        assert!(
+            uuid::Uuid::parse_str(&token).is_ok(),
+            "not a valid UUID: {token}"
+        );
     }
 
     #[rstest]
