@@ -15,3 +15,30 @@ impl IdempotencyStorageProvider for NoIdempotency {
         Ok(true)
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    #[rstest]
+    #[case::non_empty("any-token")]
+    #[case::empty("")]
+    #[case::unicode("token-🦀")]
+    #[tokio::test]
+    async fn no_idempotency_returns_ok_true_for_any_token(#[case] raw: &str) {
+        let provider = NoIdempotency;
+        let token = IdempotencyToken::new(raw.to_string());
+        assert!(provider.try_reserve(&token).await.unwrap());
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn no_idempotency_returns_ok_true_across_repeated_calls_with_same_token() {
+        let provider = NoIdempotency;
+        let token = IdempotencyToken::new("same".into());
+        assert!(provider.try_reserve(&token).await.unwrap());
+        assert!(provider.try_reserve(&token).await.unwrap());
+    }
+}

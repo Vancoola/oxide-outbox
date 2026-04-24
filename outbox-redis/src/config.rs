@@ -11,7 +11,7 @@ pub struct RedisTokenConfig {
 impl Default for RedisTokenConfig {
     fn default() -> Self {
         Self {
-            ttl: Duration::from_secs(24 * 3600),
+            ttl: Duration::from_hours(24),
             key_prefix: "i_token".to_owned(),
             #[cfg(feature = "moka")]
             local_cache_capacity: 10_000,

@@ -45,23 +45,31 @@ where
         Self::default()
     }
 
+    #[must_use]
     pub fn storage(mut self, s: Arc<S>) -> Self {
         self.storage = Some(s);
         self
     }
+
+    #[must_use]
     pub fn publisher(mut self, p: Arc<P>) -> Self {
         self.publisher = Some(p);
         self
     }
+
+    #[must_use]
     pub fn config(mut self, config: Arc<OutboxConfig<PT>>) -> Self {
         self.config = Some(config);
         self
     }
+
+    #[must_use]
     pub fn shutdown_rx(mut self, rx: Receiver<bool>) -> Self {
         self.shutdown_rx = Some(rx);
         self
     }
     #[cfg(feature = "dlq")]
+    #[must_use]
     pub fn dlq_heap(mut self, heap: Arc<dyn DlqHeap>) -> Self {
         self.dlq_heap = Some(heap);
         self
