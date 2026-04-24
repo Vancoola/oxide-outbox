@@ -1,3 +1,11 @@
+//! One iteration of the worker loop: fetch a batch of pending events,
+//! publish each of them, and record the outcome.
+//!
+//! [`OutboxProcessor`] is the unit [`OutboxManager`](crate::manager::OutboxManager)
+//! drives on every wake-up. It keeps the orchestration inside the manager
+//! simple (drain until a fetch returns an empty batch) and leaves the
+//! per-event work — publishing and status bookkeeping — encapsulated here.
+
 use crate::config::OutboxConfig;
 use crate::error::OutboxError;
 use crate::model::Event;
@@ -10,6 +18,10 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use tracing::error;
 
+/// Processes one batch of pending outbox events per invocation.
+///
+/// Holds handles to storage, transport, and configuration; the manager
+/// constructs a single processor at startup and reuses it across iterations.
 pub struct OutboxProcessor<S, T, P>
 where
     P: Debug + Clone + Serialize,
@@ -25,6 +37,8 @@ where
     T: Transport<P> + 'static,
     P: Debug + Clone + Serialize + Send + Sync,
 {
+    /// Creates a processor wired to the supplied storage, transport, and
+    /// configuration.
     pub fn new(storage: Arc<S>, publisher: Arc<T>, config: Arc<OutboxConfig<P>>) -> Self {
         Self {
             storage,
@@ -33,9 +47,30 @@ where
         }
     }
 
-    /// We receive the event batch and send it to Transport
+    /// Processes one batch of pending events.
+    ///
+    /// Fetches up to `config.batch_size` rows via
+    /// [`OutboxStorage::fetch_next_to_process`], publishes each through the
+    /// [`Transport`], and then marks every successfully published row as
+    /// [`Sent`](crate::model::EventStatus::Sent) in a single
+    /// [`update_status`](OutboxStorage::update_status) call. Rows whose
+    /// `publish` call failed are left in `Processing`; their lock will expire
+    /// and make them eligible for retry.
+    ///
+    /// Returns the number of events fetched in the batch — `0` signals to the
+    /// caller (typically the manager's drain loop) that there is nothing left
+    /// to do right now and it can go back to waiting.
+    ///
+    /// When the `dlq` feature is enabled, takes a shared
+    /// [`DlqHeap`](crate::dlq::storage::DlqHeap) and records success or
+    /// failure per event so the heap can track repeat-offender rows.
+    ///
     /// # Errors
-    /// We may get a DB error during fetch or UPDATE. publish errors are only logged.
+    ///
+    /// Returns a [`DatabaseError`](OutboxError::DatabaseError) propagated from
+    /// `fetch_next_to_process` or `update_status`. Per-event publish failures
+    /// are *not* propagated — they are logged via `tracing::error!` and the
+    /// rest of the batch continues.
     pub async fn process_pending_events(
         &self,
         #[cfg(feature = "dlq")] dlq_heap: Arc<dyn crate::dlq::storage::DlqHeap>,

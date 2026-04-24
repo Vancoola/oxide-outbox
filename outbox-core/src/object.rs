@@ -1,52 +1,96 @@
+//! Newtype wrappers for the fields stored on an [`Event`](crate::model::Event).
+//!
+//! Each type hides its underlying representation and exposes a narrow,
+//! intention-revealing API. Under the `sqlx` feature every newtype derives a
+//! transparent `sqlx::Type`, so they round-trip through database columns
+//! without additional conversion code.
+
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter};
 use uuid::Uuid;
 
+/// Primary key of an outbox row.
+///
+/// Wraps a [`Uuid`] so that event identifiers are not confused with other
+/// UUID-valued columns. [`Default`] produces a fresh random v4 identifier.
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
 #[cfg_attr(feature = "sqlx", sqlx(transparent))]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct EventId(Uuid);
 impl Default for EventId {
+    /// Generates a fresh random identifier (UUID v4).
     fn default() -> Self {
         Self(Uuid::new_v4())
     }
 }
 impl EventId {
+    /// Wraps an existing [`Uuid`] — typically used by storage adapters when
+    /// hydrating an [`Event`](crate::model::Event) from a database row.
+    #[must_use]
     pub fn load(id: Uuid) -> Self {
         Self(id)
     }
+    /// Returns the underlying [`Uuid`] for use with APIs that need one
+    /// (e.g. logging or foreign-key references).
+    #[must_use]
     pub fn as_uuid(&self) -> Uuid {
         self.0
     }
 }
 
+/// Deduplication token attached to an [`Event`](crate::model::Event).
+///
+/// Produced by the configured
+/// [`IdempotencyStrategy`](crate::config::IdempotencyStrategy) and, when an
+/// [`IdempotencyStorageProvider`](crate::idempotency::storage::IdempotencyStorageProvider)
+/// is wired, used to reserve uniqueness before the event is written.
+/// Accepts arbitrary strings — interpretation is left entirely to the caller.
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
 #[cfg_attr(feature = "sqlx", sqlx(transparent))]
 #[derive(Debug, Clone)]
 pub struct IdempotencyToken(pub String);
 impl IdempotencyToken {
+    /// Wraps a string as a token.
+    #[must_use]
     pub fn new(token: String) -> Self {
         Self(token)
     }
+    /// Returns the token as a `&str` for comparison or logging.
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
+    /// Returns the raw bytes of the token — convenient for hashing backends
+    /// such as Redis keys or BLAKE3.
+    #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         self.0.as_bytes()
     }
 }
 
+/// Domain-level event name used by transports for routing (Kafka topic
+/// suffix, Redis stream key, etc).
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
 #[cfg_attr(feature = "sqlx", sqlx(transparent))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventType(String);
 impl EventType {
+    /// Creates an [`EventType`] from a borrowed string slice.
+    ///
+    /// Use this at call sites that produce an event — e.g. `"order.created"`.
+    #[must_use]
     pub fn new(event_type: &str) -> Self {
         Self(event_type.to_string())
     }
+    /// Alternate constructor used by storage adapters when hydrating an
+    /// [`Event`](crate::model::Event) from a row. Semantically identical to
+    /// [`new`](Self::new); the name signals intent on the read path.
+    #[must_use]
     pub fn load(value: &str) -> Self {
         Self(value.to_owned())
     }
+    /// Returns the event type as a `&str`.
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -57,6 +101,11 @@ impl Display for EventType {
     }
 }
 
+/// Typed wrapper around the user's domain event value.
+///
+/// Marked with `#[serde(transparent)]`, so serialization produces exactly the
+/// same JSON as the inner `T` — wrapping an existing type in [`Payload`] does
+/// not change its on-the-wire representation.
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
 #[cfg_attr(feature = "sqlx", sqlx(transparent))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,12 +115,21 @@ impl<T> Payload<T>
 where
     T: Debug + Clone + Serialize + Send + Sync,
 {
+    /// Wraps an owned payload value.
+    #[must_use]
     pub fn new(payload: T) -> Self {
         Self(payload)
     }
+    /// Wraps a payload by cloning from a borrowed reference.
+    ///
+    /// Convenient when the caller needs to keep ownership of the original
+    /// value (for logging, further processing, etc.).
+    #[must_use]
     pub fn from_ref(value: &T) -> Self {
         Self(value.clone())
     }
+    /// Returns a borrowed reference to the inner payload.
+    #[must_use]
     pub fn as_value(&self) -> &T {
         &self.0
     }

@@ -1,24 +1,65 @@
+//! Core domain types: the outbox [`Event`] row and its lifecycle
+//! [`EventStatus`].
+//!
+//! These types are what storage adapters read and write, what transports
+//! publish, and what the [`IdempotencyStrategy::Custom`](crate::config::IdempotencyStrategy::Custom)
+//! function receives. When the `sqlx` feature is enabled, [`Event`] derives
+//! `sqlx::FromRow` so it can be decoded directly from a database row.
+
 use crate::object::{EventId, EventType, IdempotencyToken, Payload};
 use serde::Serialize;
 use std::fmt::Debug;
 use time::OffsetDateTime;
 
+/// A single outbox row representing one domain event to be published.
+///
+/// An event starts out with [`status`](Self::status) set to
+/// [`EventStatus::Pending`] and travels through the worker loop:
+/// a worker flips the row to [`EventStatus::Processing`] with a lock until
+/// [`locked_until`](Self::locked_until), publishes via the transport, and
+/// finally marks it [`EventStatus::Sent`]. If a worker crashes, the lock
+/// expires and the row becomes eligible again.
+///
+/// Generic over the user's payload type `PT`; see [`Payload`].
 #[cfg_attr(feature = "sqlx", derive(sqlx::FromRow))]
 #[derive(Debug, Clone)]
 pub struct Event<PT> {
+    /// Randomly generated primary key (UUID v4). Used to identify the row
+    /// across status transitions.
     pub id: EventId,
+    /// Deduplication token produced according to the configured
+    /// [`IdempotencyStrategy`](crate::config::IdempotencyStrategy). May be
+    /// `None` when no token is produced.
     pub idempotency_token: Option<IdempotencyToken>,
+    /// Domain-level event name used for routing on the transport side.
     pub event_type: EventType,
+    /// The user payload, serialized as JSON when the `sqlx` feature is on.
     #[cfg_attr(feature = "sqlx", sqlx(json))]
     pub payload: Payload<PT>,
+    /// Wall-clock time the row was constructed, in UTC.
     pub created_at: OffsetDateTime,
+    /// Expiration of the current processing lock. Fresh rows start with
+    /// [`OffsetDateTime::UNIX_EPOCH`] (i.e. "not locked"); storage adapters
+    /// update this when they claim the row for processing.
     pub locked_until: OffsetDateTime,
+    /// Current lifecycle stage. See [`EventStatus`].
     pub status: EventStatus,
 }
 impl<PT> Event<PT>
 where
     PT: Debug + Clone + Serialize,
 {
+    /// Constructs a new [`Event`] ready to be inserted by the storage layer.
+    ///
+    /// The caller supplies the domain-level fields (`event_type`, `payload`,
+    /// `idempotency_token`); the remaining fields are initialised with sensible
+    /// defaults:
+    ///
+    /// - [`id`](Event::id) — a fresh random [`EventId`]
+    /// - [`created_at`](Event::created_at) — `OffsetDateTime::now_utc()`
+    /// - [`locked_until`](Event::locked_until) — `OffsetDateTime::UNIX_EPOCH`
+    ///   (unlocked)
+    /// - [`status`](Event::status) — [`EventStatus::Pending`]
     pub fn new(
         event_type: EventType,
         payload: Payload<PT>,
@@ -36,6 +77,17 @@ where
     }
 }
 
+/// Lifecycle stage of an outbox [`Event`].
+///
+/// A row moves forward through the variants and never steps backwards on a
+/// happy path:
+///
+/// ```text
+/// Pending → Processing → Sent
+/// ```
+///
+/// When the `sqlx` feature is enabled, this enum maps to a Postgres type
+/// named `status` with `PascalCase` variant names.
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
 #[cfg_attr(
     feature = "sqlx",
@@ -43,8 +95,15 @@ where
 )]
 #[derive(Debug, Clone, PartialEq)]
 pub enum EventStatus {
+    /// Newly written row awaiting a worker. Includes both freshly inserted
+    /// events and rows whose processing lock expired (making them eligible
+    /// for retry).
     Pending,
+    /// A worker has claimed the row and is currently attempting to publish it.
+    /// The lock is held until [`Event::locked_until`].
     Processing,
+    /// The event has been successfully published to the transport. Rows in
+    /// this state are eventually removed by the garbage collector.
     Sent,
 }
 

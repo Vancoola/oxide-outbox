@@ -1,3 +1,11 @@
+//! Top-level worker that owns the outbox event loop.
+//!
+//! [`OutboxManager`] ties together storage, transport, configuration and a
+//! shutdown signal. It drives the main processing loop — waiting for database
+//! notifications, polling on a fixed interval, draining pending events via
+//! [`OutboxProcessor`], and running a periodic [`GarbageCollector`] task on
+//! the side. Construct one via [`OutboxManagerBuilder`](crate::builder::OutboxManagerBuilder).
+
 use crate::config::OutboxConfig;
 use crate::error::OutboxError;
 use crate::gc::GarbageCollector;
@@ -11,6 +19,18 @@ use std::time::Duration;
 use tokio::sync::watch::Receiver;
 use tracing::{debug, error, info, trace};
 
+/// Long-running worker that publishes pending outbox events to the broker.
+///
+/// The manager owns one concrete [`OutboxStorage`] implementation (`S`), one
+/// [`Transport`] implementation (`P`), and the user's domain event payload type
+/// (`PT`). After [`run`](Self::run) is invoked, it will keep processing events
+/// until the watched shutdown channel flips to `true`.
+///
+/// Prefer constructing through
+/// [`OutboxManagerBuilder`](crate::builder::OutboxManagerBuilder) rather than
+/// calling [`new`](Self::new) directly — the builder reports missing
+/// dependencies with a structured [`OutboxError::ConfigError`] instead of
+/// requiring all arguments to line up positionally.
 pub struct OutboxManager<S, P, PT>
 where
     PT: Debug + Clone + Serialize,
@@ -29,6 +49,15 @@ where
     P: Transport<PT> + Send + Sync + 'static,
     PT: Debug + Clone + Serialize + Send + Sync + 'static,
 {
+    /// Direct constructor used by
+    /// [`OutboxManagerBuilder`](crate::builder::OutboxManagerBuilder).
+    ///
+    /// Application code should normally go through the builder, which
+    /// validates that every required collaborator has been supplied.
+    ///
+    /// This signature is compiled when the `dlq` feature is enabled and takes
+    /// an extra [`DlqHeap`](crate::dlq::storage::DlqHeap) that tracks per-event
+    /// failure counts.
     #[cfg(feature = "dlq")]
     pub fn new(
         storage: Arc<S>,
@@ -46,6 +75,13 @@ where
         }
     }
 
+    /// Direct constructor used by
+    /// [`OutboxManagerBuilder`](crate::builder::OutboxManagerBuilder).
+    ///
+    /// Application code should normally go through the builder.
+    ///
+    /// This signature is compiled when the `dlq` feature is disabled and omits
+    /// the DLQ heap argument.
     #[cfg(not(feature = "dlq"))]
     pub fn new(
         storage: Arc<S>,
@@ -63,13 +99,56 @@ where
 
     /// Starts the main outbox worker loop.
     ///
-    /// This method will run until a shutdown signal is received via the `shutdown_rx` channel.
-    /// It handles event processing, database notifications, and periodic garbage collection.
+    /// This method will run until a shutdown signal is received via the
+    /// `shutdown_rx` channel. It coordinates three concerns:
+    ///
+    /// - **Event processing** — on each wake-up it drives
+    ///   [`OutboxProcessor`] in an inner drain loop until the fetched batch is
+    ///   empty, at which point it returns to waiting.
+    /// - **Wake-up sources** — a `tokio::select!` races a storage-level
+    ///   `LISTEN`/notify call, a poll interval (`config.poll_interval_secs`),
+    ///   and the shutdown receiver. A notification error is logged and the
+    ///   loop sleeps for 5 seconds before retrying.
+    /// - **Garbage collection** — a background task is spawned that ticks on
+    ///   `config.gc_interval_secs` and calls [`GarbageCollector::collect_garbage`],
+    ///   exiting when the shutdown signal fires.
     ///
     /// # Errors
     ///
-    /// Returns an [`OutboxError`] if the worker encounters a terminal failure that it cannot
-    /// recover from (though currently the loop primarily logs errors and continues).
+    /// Returns an [`OutboxError`] if the worker encounters a terminal failure
+    /// that it cannot recover from. In the current implementation transient
+    /// errors from the storage and transport layers are logged and the loop
+    /// continues, so a returned error signals that the worker observed a
+    /// graceful shutdown via `shutdown_rx`.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use std::sync::Arc;
+    /// use tokio::sync::watch;
+    /// use outbox_core::prelude::*;
+    ///
+    /// # async fn start(
+    /// #     storage: Arc<impl OutboxStorage<MyEvent> + Send + Sync + 'static>,
+    /// #     publisher: Arc<impl Transport<MyEvent> + Send + Sync + 'static>,
+    /// # ) -> Result<(), OutboxError>
+    /// # where MyEvent: std::fmt::Debug + Clone + serde::Serialize + Send + Sync + 'static,
+    /// # {
+    /// let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    /// let manager = OutboxManagerBuilder::new()
+    ///     .storage(storage)
+    ///     .publisher(publisher)
+    ///     .config(Arc::new(OutboxConfig::default()))
+    ///     .shutdown_rx(shutdown_rx)
+    ///     .build()?;
+    ///
+    /// let handle = tokio::spawn(async move { manager.run().await });
+    ///
+    /// // ... later, on a signal or process exit:
+    /// let _ = shutdown_tx.send(true);
+    /// handle.await.expect("worker panicked")?;
+    /// # Ok(()) }
+    /// ```
     pub async fn run(self) -> Result<(), OutboxError> {
         let storage_for_listen = self.storage.clone();
         let processor = OutboxProcessor::new(

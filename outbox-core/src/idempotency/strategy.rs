@@ -1,3 +1,10 @@
+//! Resolves an [`IdempotencyStrategy`] into a concrete token at write time.
+//!
+//! The logic is intentionally kept out of
+//! [`OutboxService::add_event`](crate::service::OutboxService::add_event) so
+//! the strategy can be exercised directly in tests without spinning up a full
+//! service.
+
 use crate::config::IdempotencyStrategy;
 use crate::model::Event;
 use serde::Serialize;
@@ -7,12 +14,30 @@ impl<P> IdempotencyStrategy<P>
 where
     P: Debug + Clone + Serialize,
 {
-    /// Invokes the idempotency strategy to generate or retrieve a token.
+    /// Resolves the strategy into a concrete token for the event about to be
+    /// written.
+    ///
+    /// Behaviour per variant:
+    ///
+    /// - [`Provided`](IdempotencyStrategy::Provided) — returns
+    ///   `provided_token` as-is; `None` propagates through and means the
+    ///   event will be stored without a token.
+    /// - [`Uuid`](IdempotencyStrategy::Uuid) — generates a fresh UUID v7;
+    ///   `provided_token` is ignored.
+    /// - [`Custom`](IdempotencyStrategy::Custom) — invokes `get_event`,
+    ///   passes the resulting [`Event`] to the user-supplied function, and
+    ///   wraps the returned `String` in `Some`.
+    /// - [`None`](IdempotencyStrategy::None) — returns `None`; neither
+    ///   `provided_token` nor `get_event` is used.
+    ///
+    /// `get_event` is only evaluated for the `Custom` branch, so callers can
+    /// pass `|| None` for every other strategy.
     ///
     /// # Panics
     ///
     /// Panics if the strategy is set to `Custom`, but the provided `get_event`
-    /// closure returns `None`.
+    /// closure returns `None`. The panic message is
+    /// `"Strategy is Custom, but no Event context provided"`.
     pub fn invoke<F>(&self, provided_token: Option<String>, get_event: F) -> Option<String>
     where
         F: FnOnce() -> Option<Event<P>>,

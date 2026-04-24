@@ -1,18 +1,62 @@
+//! Runtime configuration for the outbox crate.
+//!
+//! [`OutboxConfig`] carries the tunables that both the producer-side
+//! [`OutboxService`](crate::service::OutboxService) and the worker-side
+//! [`OutboxManager`](crate::manager::OutboxManager) read — batch size, timer
+//! intervals, lock timeout, and which [`IdempotencyStrategy`] to apply when
+//! new events are written.
+
 use crate::model::Event;
 use serde::Serialize;
 use std::fmt::Debug;
 
+/// Runtime configuration shared by the producer and worker sides.
+///
+/// Generic over the user's domain event payload type `P` because the
+/// [`Custom`](IdempotencyStrategy::Custom) strategy variant holds a function
+/// pointer of type `fn(&Event<P>) -> String`.
+///
+/// All fields are public so callers can construct the struct with a literal or
+/// start from [`default`](Self::default) and override selected fields.
+///
+/// # Example
+///
+/// ```
+/// use outbox_core::prelude::*;
+///
+/// # #[derive(Debug, Clone, serde::Serialize)]
+/// # struct MyEvent;
+/// let cfg: OutboxConfig<MyEvent> = OutboxConfig {
+///     batch_size: 200,
+///     poll_interval_secs: 2,
+///     ..OutboxConfig::default()
+/// };
+/// assert_eq!(cfg.batch_size, 200);
+/// assert_eq!(cfg.retention_days, 7); // inherited from default
+/// ```
 #[derive(Clone)]
 pub struct OutboxConfig<P>
 where
     P: Debug + Clone + Serialize,
 {
+    /// Maximum number of events fetched per processing iteration.
     pub batch_size: u32,
+    /// How long sent events are kept before the garbage collector deletes
+    /// them, measured in days.
     pub retention_days: i64,
+    /// Interval between garbage-collection passes, in seconds.
     pub gc_interval_secs: u64,
+    /// Fallback polling interval for the worker loop, in seconds. Used
+    /// alongside database `LISTEN`/notify to guarantee progress even when
+    /// notifications are missed or unsupported.
     pub poll_interval_secs: u64,
+    /// Duration a row stays locked while a worker processes it, in minutes.
+    /// Once this timeout elapses, the row becomes eligible to be picked up
+    /// again (recovering from a crashed or stuck worker).
     pub lock_timeout_mins: i64,
 
+    /// How idempotency tokens are produced for newly written events. See
+    /// [`IdempotencyStrategy`] for the available variants.
     pub idempotency_strategy: IdempotencyStrategy<P>,
 }
 
@@ -20,6 +64,21 @@ impl<P> Default for OutboxConfig<P>
 where
     P: Debug + Clone + Serialize,
 {
+    /// Returns a configuration suitable as a starting point.
+    ///
+    /// The defaults are:
+    ///
+    /// | Field | Value |
+    /// |---|---|
+    /// | `batch_size` | 100 |
+    /// | `retention_days` | 7 |
+    /// | `gc_interval_secs` | 3600 |
+    /// | `poll_interval_secs` | 10 |
+    /// | `lock_timeout_mins` | 5 |
+    /// | `idempotency_strategy` | [`IdempotencyStrategy::None`] |
+    ///
+    /// These values are part of the public contract — tuning them is a
+    /// deliberate behaviour change.
     fn default() -> Self {
         Self {
             batch_size: 100,
@@ -32,16 +91,32 @@ where
     }
 }
 
+/// How an idempotency token is produced when a new event is written.
+///
+/// The variant is evaluated inside
+/// [`OutboxService::add_event`](crate::service::OutboxService::add_event)
+/// before the event is persisted. When an
+/// [`IdempotencyStorageProvider`](crate::idempotency::storage::IdempotencyStorageProvider)
+/// is wired, the produced token is also used to reserve uniqueness up front.
 #[derive(Clone)]
 pub enum IdempotencyStrategy<P>
 where
     P: Debug + Clone + Serialize,
 {
+    /// Uses the caller-supplied token as-is. Passing `None` at call site means
+    /// the event is stored without a token and no reservation is attempted.
     Provided,
+    /// Derives the token by applying the given function to the event about to
+    /// be written. The `add_event` callback `get_event` must return `Some`
+    /// for this variant — otherwise the service panics.
     Custom(fn(&Event<P>) -> String),
+    /// Generates a fresh UUID v7 token at write time. Any caller-supplied
+    /// token is ignored.
     Uuid,
     //TODO:
     //HashPayload, //BLAKE3
+    /// Disables idempotency — no token is produced and no reservation is
+    /// attempted. This is the default.
     None,
 }
 

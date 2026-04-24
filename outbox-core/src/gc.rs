@@ -1,9 +1,23 @@
+//! Periodic cleanup of finished outbox rows.
+//!
+//! [`OutboxManager`](crate::manager::OutboxManager) spawns a background task
+//! that wakes up on `config.gc_interval_secs` and asks a [`GarbageCollector`]
+//! to run. The collector is a thin proxy over
+//! [`OutboxStorage::delete_garbage`] — the actual retention logic lives in
+//! the storage implementation because what qualifies as "garbage" (age cut
+//! off, status filter, batch size) is backend-specific.
+
 use crate::error::OutboxError;
 use crate::storage::OutboxStorage;
 use serde::Serialize;
 use std::fmt::Debug;
 use std::sync::Arc;
 
+/// Proxy that invokes the storage layer's retention cleanup on demand.
+///
+/// Kept as a named type (rather than a free function) so the manager's
+/// background task can own it behind an `Arc` without capturing the full
+/// manager state.
 pub(crate) struct GarbageCollector<S, P> {
     storage: Arc<S>,
     _marker: std::marker::PhantomData<P>,
@@ -14,6 +28,7 @@ where
     S: OutboxStorage<P> + 'static,
     P: Debug + Clone + Serialize + Send + Sync,
 {
+    /// Creates a collector that will call into the supplied storage.
     pub fn new(storage: Arc<S>) -> Self {
         Self {
             storage,
@@ -21,6 +36,15 @@ where
         }
     }
 
+    /// Runs one cleanup pass by delegating to
+    /// [`OutboxStorage::delete_garbage`].
+    ///
+    /// The collector itself is stateless — each call hits the storage layer,
+    /// which decides which rows are expired and removes them.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any [`OutboxError`] returned by the storage implementation.
     pub async fn collect_garbage(&self) -> Result<(), OutboxError> {
         self.storage.delete_garbage().await
     }

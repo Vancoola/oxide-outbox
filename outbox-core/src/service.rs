@@ -1,3 +1,13 @@
+//! Producer-side entry point: writes new events into the outbox.
+//!
+//! [`OutboxService`] is what application code calls when a domain action
+//! needs to emit an event. It applies the configured
+//! [`IdempotencyStrategy`](crate::config::IdempotencyStrategy) to produce (or
+//! accept) a token, optionally reserves that token through an external
+//! [`IdempotencyStorageProvider`] to reject duplicates, and then persists the
+//! event via an [`OutboxWriter`]. The worker side
+//! ([`OutboxManager`](crate::manager::OutboxManager)) picks it up later.
+
 use crate::error::OutboxError;
 use crate::idempotency::storage::NoIdempotency;
 use crate::model::Event;
@@ -8,6 +18,18 @@ use serde::Serialize;
 use std::fmt::Debug;
 use std::sync::Arc;
 
+/// Producer-side facade for writing outbox events.
+///
+/// The service is generic over:
+///
+/// - `W` — [`OutboxWriter`] implementation (persists the event row)
+/// - `S` — [`IdempotencyStorageProvider`] implementation used to reserve
+///   tokens; set to [`NoIdempotency`] when no external reservation is needed
+/// - `P` — the user's domain event payload type (`Debug + Clone + Serialize`)
+///
+/// Construct with [`new`](Self::new) when events should be written without an
+/// external idempotency check, or with
+/// [`with_idempotency`](Self::with_idempotency) to wire a reservation backend.
 pub struct OutboxService<W, S, P>
 where
     P: Debug + Clone + Serialize + Send + Sync,
@@ -22,6 +44,14 @@ where
     W: OutboxWriter<P> + Send + Sync + 'static,
     P: Debug + Clone + Serialize + Send + Sync,
 {
+    /// Creates a service without any external idempotency reservation.
+    ///
+    /// Tokens are still produced according to `config.idempotency_strategy`
+    /// and written alongside the event, so downstream consumers can deduplicate
+    /// on their side, but no pre-insert uniqueness check is performed here.
+    /// Use [`with_idempotency`](OutboxService::with_idempotency) to attach a
+    /// reservation store (for example Redis) when at-producer deduplication
+    /// is required.
     pub fn new(writer: Arc<W>, config: Arc<OutboxConfig<P>>) -> Self {
         Self {
             writer,
@@ -37,6 +67,13 @@ where
     S: IdempotencyStorageProvider + Send + Sync + 'static,
     P: Debug + Clone + Serialize + Send + Sync,
 {
+    /// Creates a service wired to an external idempotency reservation store.
+    ///
+    /// Before inserting the event, the service calls
+    /// [`IdempotencyStorageProvider::try_reserve`] with the token produced by
+    /// the configured strategy. If the reservation returns `false`, the insert
+    /// is skipped and [`OutboxError::DuplicateEvent`] is propagated to the
+    /// caller.
     pub fn with_idempotency(
         writer: Arc<W>,
         config: Arc<OutboxConfig<P>>,
@@ -50,18 +87,50 @@ where
     }
     /// Adds a new event to the outbox storage with idempotency checks.
     ///
-    /// If an idempotency provider is configured and a token is generated,
-    /// it will first attempt to reserve the token to prevent duplicate processing.
+    /// The token is derived from
+    /// [`IdempotencyStrategy`](crate::config::IdempotencyStrategy) on the
+    /// configured [`OutboxConfig`]:
+    ///
+    /// - `Provided` — uses `provided_token` as-is (`None` skips reservation).
+    /// - `Uuid` — generates a fresh UUID v7; `provided_token` is ignored.
+    /// - `Custom(fn)` — calls `get_event` and passes the resulting
+    ///   [`Event`] to the closure. The `get_event` callback is **only**
+    ///   invoked by this branch, so for other strategies callers can safely
+    ///   pass `|| None`.
+    /// - `None` — no token is produced and reservation is skipped.
+    ///
+    /// If an idempotency provider is configured and a token was produced, it
+    /// will first attempt to reserve the token to prevent duplicate processing.
     ///
     /// # Errors
     ///
-    /// Returns [`OutboxError::DuplicateEvent`] if the event token has already been used.
-    /// Returns [`OutboxError`] if the idempotency storage fails or the database
-    /// insert operation fails.
+    /// Returns [`OutboxError::DuplicateEvent`] if the event token has already
+    /// been used. Returns any [`OutboxError`] variant propagated from the
+    /// reservation call or from the writer's `insert_event`.
     ///
     /// # Panics
     ///
-    /// Panics if the idempotency strategy is set to `Custom`, but `get_event` returns `None`.
+    /// Panics if the idempotency strategy is set to `Custom`, but `get_event`
+    /// returns `None`.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use std::sync::Arc;
+    /// use outbox_core::prelude::*;
+    ///
+    /// # async fn emit(
+    /// #     service: OutboxService<impl OutboxWriter<MyEvent> + Send + Sync + 'static,
+    /// #                            NoIdempotency,
+    /// #                            MyEvent>,
+    /// #     payload: MyEvent,
+    /// # ) -> Result<(), OutboxError>
+    /// # where MyEvent: std::fmt::Debug + Clone + serde::Serialize + Send + Sync,
+    /// # {
+    /// // Uuid / None strategies — no event context needed.
+    /// service.add_event("order.created", payload, None, || None).await?;
+    /// # Ok(()) }
+    /// ```
     pub async fn add_event<F>(
         &self,
         event_type: &str,

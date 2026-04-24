@@ -1,4 +1,39 @@
+//! Fluent builder for [`OutboxManager`].
+//!
+//! The manager has several collaborators that must all be provided before it
+//! can run: a storage backend, a message transport, a configuration, and a
+//! shutdown channel — plus a DLQ heap when the `dlq` feature is enabled.
+//! [`OutboxManagerBuilder`] assembles these pieces step by step and validates
+//! them once at [`build`](OutboxManagerBuilder::build) time, returning a
+//! structured [`OutboxError::ConfigError`] if anything is missing rather than
+//! panicking.
+//!
+//! # Example
+//!
+//! ```ignore
+//! use std::sync::Arc;
+//! use tokio::sync::watch;
+//! use outbox_core::prelude::*;
+//!
+//! # async fn run(
+//! #     storage: Arc<impl OutboxStorage<MyEvent> + Send + Sync + 'static>,
+//! #     publisher: Arc<impl Transport<MyEvent> + Send + Sync + 'static>,
+//! # ) -> Result<(), OutboxError>
+//! # where MyEvent: std::fmt::Debug + Clone + serde::Serialize + Send + Sync + 'static,
+//! # {
+//! let (_tx, rx) = watch::channel(false);
+//! let manager = OutboxManagerBuilder::new()
+//!     .storage(storage)
+//!     .publisher(publisher)
+//!     .config(Arc::new(OutboxConfig::default()))
+//!     .shutdown_rx(rx)
+//!     .build()?;
+//! manager.run().await
+//! # }
+//! ```
+
 use crate::config::OutboxConfig;
+#[cfg(feature = "dlq")]
 use crate::dlq::storage::DlqHeap;
 use crate::error::OutboxError;
 use crate::manager::OutboxManager;
@@ -8,6 +43,26 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use tokio::sync::watch::Receiver;
 
+/// Fluent builder that assembles an [`OutboxManager`].
+///
+/// All fields are optional during construction — validation happens once in
+/// [`build`](Self::build). Setter methods consume and return `self`, so a
+/// builder can be constructed in a single chained expression. The builder is
+/// generic over:
+///
+/// - `S` — [`OutboxStorage`] implementation (typically a database adapter)
+/// - `P` — [`Transport`] implementation (message broker publisher)
+/// - `PT` — the user's domain event payload type (`Debug + Clone + Serialize`)
+///
+/// # Required vs optional
+///
+/// | Setter | Required | Notes |
+/// |---|---|---|
+/// | [`storage`](Self::storage) | yes | fails `build()` if missing |
+/// | [`publisher`](Self::publisher) | yes | fails `build()` if missing |
+/// | [`config`](Self::config) | yes | fails `build()` if missing |
+/// | [`shutdown_rx`](Self::shutdown_rx) | yes | fails `build()` if missing |
+/// | [`dlq_heap`](Self::dlq_heap) | yes *(feature `dlq` only)* | fails `build()` if missing when feature is on |
 pub struct OutboxManagerBuilder<S, P, PT>
 where
     PT: Debug + Clone + Serialize,
@@ -41,33 +96,50 @@ where
     P: Transport<PT> + Send + Sync + 'static,
     PT: Debug + Clone + Serialize + Send + Sync + 'static,
 {
+    /// Creates an empty builder with all fields unset.
+    ///
+    /// Equivalent to [`Default::default`]; kept as a discoverable entry point
+    /// so callers do not need to import the `Default` trait.
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Sets the storage backend used for reading pending events, locking them,
+    /// persisting status transitions, and deleting expired rows.
     #[must_use]
     pub fn storage(mut self, s: Arc<S>) -> Self {
         self.storage = Some(s);
         self
     }
 
+    /// Sets the transport (broker publisher) that delivers events to the
+    /// outside world.
     #[must_use]
     pub fn publisher(mut self, p: Arc<P>) -> Self {
         self.publisher = Some(p);
         self
     }
 
+    /// Sets the runtime configuration (batch size, poll interval, GC cadence,
+    /// lock timeout, idempotency strategy).
     #[must_use]
     pub fn config(mut self, config: Arc<OutboxConfig<PT>>) -> Self {
         self.config = Some(config);
         self
     }
 
+    /// Sets the shutdown channel. The manager stops its worker loop as soon as
+    /// `true` is observed on this receiver.
     #[must_use]
     pub fn shutdown_rx(mut self, rx: Receiver<bool>) -> Self {
         self.shutdown_rx = Some(rx);
         self
     }
+
+    /// Sets the Dead-Letter-Queue heap that tracks per-event failure counts.
+    ///
+    /// Required when the crate is built with `--features dlq`.
     #[cfg(feature = "dlq")]
     #[must_use]
     pub fn dlq_heap(mut self, heap: Arc<dyn DlqHeap>) -> Self {
@@ -75,6 +147,14 @@ where
         self
     }
 
+    /// Consumes the builder and returns a fully wired [`OutboxManager`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`OutboxError::ConfigError`] with a message identifying the
+    /// first missing dependency if any required field has not been set.
+    /// The diagnostic mentions one of: `Storage`, `Publisher`, `Config`,
+    /// `Shutdown channel`, or — under feature `dlq` — `Dlq heap`.
     pub fn build(self) -> Result<OutboxManager<S, P, PT>, OutboxError> {
         #[cfg(feature = "dlq")]
         return Ok(OutboxManager::new(
