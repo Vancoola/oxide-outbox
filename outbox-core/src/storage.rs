@@ -85,6 +85,55 @@ where
     /// Returns an [`OutboxError`] if the listen call fails. The manager
     /// recovers by logging and sleeping 5 seconds before retrying.
     async fn wait_for_notification(&self, channel: &str) -> Result<(), OutboxError>;
+
+    /// Atomically moves the given entries out of the active outbox table and
+    /// into the dead-letter destination table.
+    ///
+    /// Called once per tick by
+    /// [`DlqProcessor`](crate::dlq::processor::DlqProcessor) after
+    /// [`DlqHeap::drain_exceeded`](crate::dlq::storage::DlqHeap::drain_exceeded)
+    /// has returned a non-empty batch. The whole `entries` slice is expected
+    /// to be moved in a single transaction so there is no observable window
+    /// in which a row appears in neither table or in both.
+    ///
+    /// `entries` carries `failure_count` (and any future per-event metadata)
+    /// alongside each [`EventId`]; the implementation persists those values
+    /// onto the destination row.
+    ///
+    /// Ids in `entries` whose source row no longer exists (already deleted
+    /// by GC, manual operator action, etc.) are silently dropped — only
+    /// matched rows are moved.
+    ///
+    /// # Default implementation
+    ///
+    /// The default implementation returns an [`OutboxError::ConfigError`].
+    /// Backend crates ship a real implementation behind their own `dlq`
+    /// feature; this default is what callers see when the backend was built
+    /// without DLQ support but `outbox-core/dlq` happens to be enabled
+    /// elsewhere in the workspace (Cargo's feature unification can pull it
+    /// in transitively).
+    ///
+    /// The method is intentionally **not** `#[cfg(feature = "dlq")]`-gated:
+    /// gating it on the trait creates a workspace-level mismatch where
+    /// `outbox-core` sees the method (because some other crate enabled the
+    /// feature) but a backend crate built without its own `dlq` feature
+    /// does not provide an implementation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`OutboxError`] if the underlying datastore call fails.
+    /// On error, the caller should assume **none** of the entries were
+    /// moved — implementations must not partially commit.
+    async fn quarantine_events(
+        &self,
+        _entries: &[crate::dlq::model::DlqEntry],
+    ) -> Result<(), OutboxError> {
+        Err(OutboxError::ConfigError(
+            "OutboxStorage::quarantine_events: DLQ is not implemented by this backend \
+             (rebuild the storage crate with its `dlq` feature enabled)"
+                .to_string(),
+        ))
+    }
 }
 
 /// Producer-side storage contract.

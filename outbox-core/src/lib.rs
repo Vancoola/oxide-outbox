@@ -72,4 +72,9 @@ pub mod prelude {
 
     pub use crate::builder::OutboxManagerBuilder;
     pub use crate::error::OutboxError;
+
+    #[cfg(feature = "dlq")]
+    pub use crate::dlq::model::DlqEntry;
+    #[cfg(feature = "dlq")]
+    pub use crate::dlq::storage::DlqHeap;
 }

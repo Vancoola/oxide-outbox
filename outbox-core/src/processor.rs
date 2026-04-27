@@ -341,7 +341,7 @@ mod tests {
             dlq.expect_record_failure()
                 .withf(move |id| *id == id2)
                 .times(1)
-                .returning(|_| Ok(1));
+                .returning(|_| Ok(()));
             processor.process_pending_events(Arc::new(dlq)).await
         };
 
@@ -376,7 +376,7 @@ mod tests {
         let result = {
             let mut dlq = MockDlqHeap::new();
             dlq.expect_record_success().times(0);
-            dlq.expect_record_failure().times(2).returning(|_| Ok(1));
+            dlq.expect_record_failure().times(2).returning(|_| Ok(()));
             processor.process_pending_events(Arc::new(dlq)).await
         };
 

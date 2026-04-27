@@ -1,4 +1,5 @@
 pub mod config;
+mod dlq;
 
 use crate::config::RedisTokenConfig;
 use async_trait::async_trait;

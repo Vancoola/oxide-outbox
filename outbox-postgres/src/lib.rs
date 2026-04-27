@@ -143,6 +143,74 @@ where
             }
         }
     }
+
+    #[cfg(feature = "dlq")]
+    async fn quarantine_events(&self, entries: &[DlqEntry]) -> Result<(), OutboxError> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+        let ids: Vec<uuid::Uuid> = entries.iter().map(|e| e.id.as_uuid()).collect();
+        let failure_counts: Vec<i32> = entries
+            .iter()
+            .map(|e| i32::try_from(e.failure_count).unwrap_or(i32::MAX))
+            .collect();
+        let last_errors: Vec<Option<String>> =
+            entries.iter().map(|e| e.last_error.clone()).collect();
+        let result = sqlx::query(
+            r"
+            WITH deleted AS (
+                DELETE FROM outbox_events
+                WHERE id = ANY($1::uuid[])
+                RETURNING
+                    id,
+                    idempotency_token,
+                    event_type,
+                    payload,
+                    status,
+                    created_at,
+                    locked_until
+            )
+            INSERT INTO outbox_dead_letters (
+                id,
+                idempotency_token,
+                event_type,
+                payload,
+                original_status,
+                created_at,
+                locked_until,
+                failure_count,
+                last_error
+            )
+            SELECT
+                d.id,
+                d.idempotency_token,
+                d.event_type,
+                d.payload,
+                d.status,
+                d.created_at,
+                d.locked_until,
+                f.failure_count,
+                f.last_error
+            FROM deleted AS d
+            JOIN unnest($1::uuid[], $2::int[], $3::text[])
+                    AS f(id, failure_count, last_error)
+                ON d.id = f.id
+            ",
+        )
+        .bind(&ids)
+        .bind(&failure_counts)
+        .bind(&last_errors)
+        .execute(&self.inner.pool)
+        .await
+        .map_err(|e| OutboxError::DatabaseError(e.to_string()))?;
+
+        debug!(
+            "DLQ reaper: quarantined {}/{} events",
+            result.rows_affected(),
+            entries.len()
+        );
+        Ok(())
+    }
 }
 
 pub struct PostgresWriter<E>(pub E);

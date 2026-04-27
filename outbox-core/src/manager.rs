@@ -162,26 +162,15 @@ where
         let mut rx_gc = self.shutdown_rx.clone();
         let gc_interval_secs = self.config.gc_interval_secs;
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(gc_interval_secs));
-            loop {
-                tokio::select! {
-                    _ = interval.tick() => { let _ = gc.collect_garbage().await; }
-                    _ = rx_gc.changed() => {
-                            if rx_gc.has_changed().is_err(){
-                            break;
-                        }
-                        if *rx_gc.borrow() {
-                            break
-                        }
-                    },
-                }
-            }
+            gc.run(Duration::from_secs(gc_interval_secs), &mut rx_gc)
+                .await
         });
 
         #[cfg(feature = "dlq")]
         {
             let dlq_processor = DlqProcessor::new(
                 self.dlq_heap.clone(),
+                self.storage.clone(),
                 self.config.clone(),
                 self.shutdown_rx.clone(),
             );
@@ -565,7 +554,7 @@ mod tests {
         let dlq_heap_mock = {
             let mut m = MockDlqHeap::new();
             m.expect_record_success().returning(|_| Ok(()));
-            m.expect_record_failure().returning(|_| Ok(0));
+            m.expect_record_failure().returning(|_| Ok(()));
             m
         };
 
@@ -713,7 +702,7 @@ mod tests {
         let manager = {
             let mut dlq = MockDlqHeap::new();
             dlq.expect_record_success().returning(|_| Ok(()));
-            dlq.expect_record_failure().returning(|_| Ok(0));
+            dlq.expect_record_failure().returning(|_| Ok(()));
             OutboxManagerBuilder::new()
                 .storage(Arc::new(storage_mock))
                 .publisher(Arc::new(transport_mock))

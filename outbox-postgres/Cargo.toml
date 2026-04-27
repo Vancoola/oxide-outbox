@@ -24,5 +24,10 @@ tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
+[features]
+default = []
+dlq = ["outbox-core/dlq"]
+full = ["dlq"]
+
 [lints]
 workspace = true

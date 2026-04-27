@@ -28,7 +28,8 @@ tracing.workspace = true
 
 [features]
 default = []
-full = ["moka"]
+dlq = ["outbox-core/dlq"]
+full = ["moka", "dlq"]
 
 [lints]
 workspace = true
