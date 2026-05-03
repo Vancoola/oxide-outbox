@@ -1,4 +1,5 @@
 pub mod config;
+#[cfg(feature = "dlq")]
 mod dlq;
 
 use crate::config::RedisTokenConfig;
@@ -7,15 +8,15 @@ use outbox_core::prelude::{IdempotencyStorageProvider, IdempotencyToken, OutboxE
 use redis::aio::MultiplexedConnection;
 use tracing::error;
 
-pub struct RedisTokenProvider {
+pub struct RedisProvider {
     connection: MultiplexedConnection,
     #[cfg(feature = "moka")]
     local_cache: moka::future::Cache<String, ()>,
     config: RedisTokenConfig,
 }
 
-impl RedisTokenProvider {
-    /// Creates a new `RedisTokenProvider` and establishes a connection to Redis.
+impl RedisProvider {
+    /// Creates a new `RedisProvider` and establishes a connection to Redis.
     ///
     /// # Errors
     ///
@@ -44,7 +45,7 @@ impl RedisTokenProvider {
 }
 
 #[async_trait]
-impl IdempotencyStorageProvider for RedisTokenProvider {
+impl IdempotencyStorageProvider for RedisProvider {
     async fn try_reserve(&self, token: &IdempotencyToken) -> Result<bool, OutboxError> {
         let token_str = token.as_str();
         let redis_key = format!("{}:{}", self.config.key_prefix, token_str);

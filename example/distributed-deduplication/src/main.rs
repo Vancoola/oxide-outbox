@@ -1,6 +1,6 @@
 use outbox_core::prelude::*;
 use outbox_postgres::{PostgresOutbox, PostgresWriter};
-use outbox_redis::RedisTokenProvider;
+use outbox_redis::RedisProvider;
 use outbox_redis::config::RedisTokenConfig;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let storage = PostgresOutbox::new(pool.clone(), config.clone());
     let writer = Arc::new(PostgresWriter(pool.clone()));
-    let redis_provider = RedisTokenProvider::new("redis://127.0.0.1:6379", regis_config).await?;
+    let redis_provider = RedisProvider::new("redis://127.0.0.1:6379", regis_config).await?;
 
     let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<Message>();
     let publisher = TokioEventPublisher(sender);
