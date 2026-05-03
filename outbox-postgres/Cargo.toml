@@ -1,6 +1,6 @@
 [package]
 name = "outbox-postgres"
-version = "0.2.1"
+version = "0.2.2"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -14,7 +14,7 @@ categories = ["database"]
 [dependencies]
 sqlx.workspace = true
 async-trait.workspace = true
-outbox-core = { version = "0.3.0", path="../outbox-core", features = ["sqlx"] }
+outbox-core = { version = "0.4.0", path="../outbox-core", features = ["sqlx"] }
 
 tracing.workspace = true
 
@@ -23,6 +23,11 @@ tokio.workspace = true
 
 serde.workspace = true
 serde_json.workspace = true
+
+[features]
+default = []
+dlq = ["outbox-core/dlq"]
+full = ["dlq"]
 
 [lints]
 workspace = true

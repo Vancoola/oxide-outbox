@@ -75,15 +75,11 @@ where
         .bind(self.inner.config.lock_timeout_mins)
         .fetch_all(&self.inner.pool)
         .await
-        .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+        .map_err(|e| OutboxError::DatabaseError(e.to_string()))?;
         Ok(record)
     }
 
-    async fn updates_status(
-        &self,
-        ids: &[EventId],
-        status: EventStatus,
-    ) -> Result<(), OutboxError> {
+    async fn update_status(&self, ids: &[EventId], status: EventStatus) -> Result<(), OutboxError> {
         let raw_ids: Vec<uuid::Uuid> = ids.iter().map(EventId::as_uuid).collect();
 
         sqlx::query(r"UPDATE outbox_events SET status = $1 WHERE id = ANY($2)")
@@ -91,7 +87,7 @@ where
             .bind(&raw_ids)
             .execute(&self.inner.pool)
             .await
-            .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+            .map_err(|e| OutboxError::DatabaseError(e.to_string()))?;
 
         Ok(())
     }
@@ -111,7 +107,7 @@ where
         .bind(self.inner.config.retention_days)
         .execute(&self.inner.pool)
         .await
-        .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+        .map_err(|e| OutboxError::DatabaseError(e.to_string()))?;
         debug!(
             "Garbage collector: deleted {} old messages",
             result.rows_affected()
@@ -125,12 +121,12 @@ where
         if guard.is_none() {
             let mut listener = PgListener::connect_with(&self.inner.pool)
                 .await
-                .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+                .map_err(|e| OutboxError::DatabaseError(e.to_string()))?;
 
             listener
                 .listen(channel)
                 .await
-                .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+                .map_err(|e| OutboxError::DatabaseError(e.to_string()))?;
 
             *guard = Some(listener);
         }
@@ -143,9 +139,77 @@ where
             Ok(_) => Ok(()),
             Err(e) => {
                 *guard = None;
-                Err(OutboxError::InfrastructureError(e.to_string()))
+                Err(OutboxError::DatabaseError(e.to_string()))
             }
         }
+    }
+
+    #[cfg(feature = "dlq")]
+    async fn quarantine_events(&self, entries: &[DlqEntry]) -> Result<(), OutboxError> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+        let ids: Vec<uuid::Uuid> = entries.iter().map(|e| e.id.as_uuid()).collect();
+        let failure_counts: Vec<i32> = entries
+            .iter()
+            .map(|e| i32::try_from(e.failure_count).unwrap_or(i32::MAX))
+            .collect();
+        let last_errors: Vec<Option<String>> =
+            entries.iter().map(|e| e.last_error.clone()).collect();
+        let result = sqlx::query(
+            r"
+            WITH deleted AS (
+                DELETE FROM outbox_events
+                WHERE id = ANY($1::uuid[])
+                RETURNING
+                    id,
+                    idempotency_token,
+                    event_type,
+                    payload,
+                    status,
+                    created_at,
+                    locked_until
+            )
+            INSERT INTO outbox_dead_letters (
+                id,
+                idempotency_token,
+                event_type,
+                payload,
+                original_status,
+                created_at,
+                locked_until,
+                failure_count,
+                last_error
+            )
+            SELECT
+                d.id,
+                d.idempotency_token,
+                d.event_type,
+                d.payload,
+                d.status,
+                d.created_at,
+                d.locked_until,
+                f.failure_count,
+                f.last_error
+            FROM deleted AS d
+            JOIN unnest($1::uuid[], $2::int[], $3::text[])
+                    AS f(id, failure_count, last_error)
+                ON d.id = f.id
+            ",
+        )
+        .bind(&ids)
+        .bind(&failure_counts)
+        .bind(&last_errors)
+        .execute(&self.inner.pool)
+        .await
+        .map_err(|e| OutboxError::DatabaseError(e.to_string()))?;
+
+        debug!(
+            "DLQ reaper: quarantined {}/{} events",
+            result.rows_affected(),
+            entries.len()
+        );
+        Ok(())
     }
 }
 
@@ -168,16 +232,14 @@ where
             .bind(event.id.as_uuid())
             .bind(event.idempotency_token)
             .bind(event.event_type.as_str())
-            .bind(serde_json::to_value(&event.payload).map_err(|e| OutboxError::InfrastructureError(e.to_string()))?)
+            .bind(serde_json::to_value(&event.payload).map_err(|e| OutboxError::DatabaseError(e.to_string()))?)
             .bind(event.status)
             .bind(event.created_at)
             .bind(event.locked_until)
             .execute(&self.0)
             .await
-            .map_err(|e| OutboxError::InfrastructureError(e.to_string()))?;
+            .map_err(|e| OutboxError::DatabaseError(e.to_string()))?;
 
         Ok(())
     }
 }
-
-//TODO: Create tests:

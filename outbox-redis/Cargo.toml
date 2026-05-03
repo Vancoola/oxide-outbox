@@ -21,14 +21,16 @@ readme = "README.md"
 redis.workspace = true
 moka = { workspace = true, optional = true }
 async-trait.workspace = true
+uuid = { workspace = true, optional = true }
 
-outbox-core = { version = "0.3.0", path = "../outbox-core" }
+outbox-core = { version = "0.4.0", path = "../outbox-core" }
 
 tracing.workspace = true
 
 [features]
 default = []
-full = ["moka"]
+dlq = ["outbox-core/dlq", "dep:uuid"]
+full = ["moka", "dlq"]
 
 [lints]
 workspace = true

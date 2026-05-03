@@ -1,6 +1,6 @@
 use outbox_core::prelude::*;
 use outbox_postgres::{PostgresOutbox, PostgresWriter};
-use outbox_redis::RedisTokenProvider;
+use outbox_redis::RedisProvider;
 use outbox_redis::config::RedisTokenConfig;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -24,23 +24,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         poll_interval_secs: 100,
         lock_timeout_mins: 1,
         idempotency_strategy: IdempotencyStrategy::Provided,
+        dlq_threshold: 10,
+        dlq_interval_secs: 300,
     });
     let regis_config = RedisTokenConfig::default();
 
     let storage = PostgresOutbox::new(pool.clone(), config.clone());
     let writer = Arc::new(PostgresWriter(pool.clone()));
-    let redis_provider = RedisTokenProvider::new("redis://127.0.0.1:6379", regis_config).await?;
+    let redis_provider = RedisProvider::new("redis://127.0.0.1:6379", regis_config).await?;
 
     let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<Message>();
     let publisher = TokioEventPublisher(sender);
 
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
-    let outbox = OutboxManager::new(
-        Arc::new(storage),
-        Arc::new(publisher),
-        config.clone(),
-        shutdown_rx,
-    );
+    let outbox = OutboxManagerBuilder::new()
+        .storage(Arc::new(storage))
+        .publisher(Arc::new(publisher))
+        .config(config.clone())
+        .shutdown_rx(shutdown_rx)
+        .build()?;
 
     tokio::spawn(async move {
         if let Err(e) = outbox.run().await {

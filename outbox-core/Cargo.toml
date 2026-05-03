@@ -1,6 +1,6 @@
 [package]
 name = "outbox-core"
-version = "0.3.1"
+version = "0.4.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -23,13 +23,17 @@ tracing.workspace = true
 sqlx = { workspace = true, optional = true }
 serde.workspace = true
 
+metrics = { workspace = true, optional = true }
+
 [dev-dependencies]
 mockall.workspace = true
 rstest.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
 
 [features]
 default = []
-full = ["sqlx"]
+dlq = []
+full = ["sqlx", "metrics", "dlq"]
 
 [lints]
 workspace = true

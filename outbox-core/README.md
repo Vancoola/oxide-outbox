@@ -14,6 +14,8 @@ The core logic and trait definitions for **Oxide Outbox**, a high-performance im
 * **Type-Safe Generic Payloads**: No more `serde_json::Value` overhead. Define your events using your own domain types: `Event<OrderCreated>`, `Event<UserSignedUp>`, etc.
 * **Async Native**: Built from the ground up on `tokio` for maximum concurrency.
 * **Flexible Idempotency**: Built-in support for multiple deduplication strategies (UUID v7, Provided tokens, or Custom logic).
+* **Builder API**: `OutboxManagerBuilder` gives one stable construction API regardless of which optional features (`dlq`, etc.) are enabled — no surprises from workspace feature unification.
+* **Dead Letter Queue (feature `dlq`)**: Pluggable `DlqHeap` trait + a built-in `DlqProcessor` that drains chronically failing events on a timer and hands them off to the storage adapter for quarantine.
 * **Extensible Storage & Transport**: Interfaces designed to be implemented by specialized crates (like `outbox-postgres`).
  
 ---
@@ -28,6 +30,9 @@ The central engine that orchestrates event discovery and dispatching. It is gene
 
 ### Type-Safe Events
 As of v0.3.0, events use a `Payload<PT>` wrapper. This ensures zero unnecessary JSON roundtrips and provides compile-time safety from the moment you record an event until it is sent to the transport layer.
+
+### Builder-based construction (v0.4.0)
+`OutboxManager` is now built via `OutboxManagerBuilder`. This replaces the multiple `new(..)` overloads that used to switch shape under feature flags. The builder validates required fields at `build()` time and stays a single, stable API whether `dlq` is on or off.
 
 ---
 
@@ -89,6 +94,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         poll_interval_secs: 100,
         lock_timeout_mins: 1,
         idempotency_strategy: IdempotencyStrategy::None,
+        dlq_threshold: 10,        // only used when feature `dlq` is enabled
+        dlq_interval_secs: 300,   // only used when feature `dlq` is enabled
     });
 
     // 2. Initialize Storage and Publisher
@@ -98,14 +105,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<Message>();
     let publisher = TokioEventPublisher(sender);
 
-    // 3. Initialize the Outbox Manager
+    // 3. Build the Outbox Manager
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
-    let outbox = OutboxManager::new(
-        Arc::new(storage),
-        Arc::new(publisher),
-        config.clone(),
-        shutdown_rx,
-    );
+    let outbox = OutboxManagerBuilder::new()
+        .storage(Arc::new(storage))
+        .publisher(Arc::new(publisher))
+        .config(config.clone())
+        .shutdown_rx(shutdown_rx)
+        // .dlq_heap(Arc::new(my_heap))  // required when feature `dlq` is enabled
+        .build()?;
 
     // 4. Spawn the manager in a background task
     tokio::spawn(async move {
@@ -156,8 +164,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Core Traits
 To extend `outbox-core`, you can implement these primary traits:
 
-| Trait               | Responsibility                                                                    |
-|:--------------------|:----------------------------------------------------------------------------------|
-| OutboxStorage<PT>   | Handles saving, locking, and deleting events in your DB (Postgres, Mongo, etc).   |
-| Transport<PT>       | Defines how the event is published to the outside world (Kafka, RabbitMQ, HTTP).  |
-| IdempotencyProvider | Checks if a request has already been processed to prevent duplicates.             |
+| Trait                        | Responsibility                                                                                |
+|:-----------------------------|:----------------------------------------------------------------------------------------------|
+| `OutboxStorage<PT>`          | Handles saving, locking, deleting and quarantining events in your DB (Postgres, Mongo, etc).  |
+| `Transport<PT>`              | Defines how the event is published to the outside world (Kafka, RabbitMQ, HTTP).              |
+| `IdempotencyStorageProvider` | Checks if a request has already been processed to prevent duplicates.                         |
+| `DlqHeap` *(feature `dlq`)*  | Tracks per-event failure counts and drains entries that crossed the configured threshold.     |
+
+## DLQ subsystem (feature `dlq`)
+
+When the `dlq` feature is enabled:
+
+* `OutboxConfig` exposes two extra knobs: `dlq_threshold` (how many failures before quarantine) and `dlq_interval_secs` (how often the reaper ticks).
+* `OutboxManagerBuilder::dlq_heap(..)` becomes required — `build()` returns an error if missing.
+* A background `DlqProcessor` is spawned alongside the worker. On each tick it calls `DlqHeap::drain_exceeded(threshold)` and forwards results to `OutboxStorage::quarantine_events` for atomic move into the quarantine table.
+
+For a Redis-backed `DlqHeap` see `outbox-redis`. For a Postgres `quarantine_events` impl see `outbox-postgres`.
