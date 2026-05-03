@@ -13,6 +13,7 @@ A high-performance, flexible implementation of the **Transactional Outbox patter
 * **Trait-First Architecture**: Completely decoupled from specific storage or message brokers. Switch between Postgres, MySQL, Kafka, or RabbitMQ by implementing simple traits.
 * **Built-in Garbage Collection**: Automatic cleanup of processed events to prevent table bloat.
 * **Dead Letter Queue (DLQ)**: Chronically failing events are tracked, and after crossing a configurable threshold are moved to a dedicated quarantine store — they stop blocking healthy traffic without being silently lost.
+* **Metrics (optional)**: Plug in [`metrics`](https://crates.io/crates/metrics)-compatible exporter and get a publish counter + duration histogram out of the box, labelled by `event_type` and `status`.
 * **Concurrency Safe**: Designed for horizontal scaling with support for row-level locking.
 * **Async Native**: Built from the ground up on `tokio`.
 
@@ -44,7 +45,7 @@ Add this to your `Cargo.toml`:
 ```toml
 [dependencies]
 
-outbox-core = "0.4"
+outbox-core = { version = "0.4", features = ["metrics"] } # 'metrics' is optional
 outbox-postgres = { version = "0.2", features = ["dlq"] } # If using Postgres + DLQ
 outbox-redis = { version = "0.1", features = ["moka", "dlq"] } # Optional Redis deduplication + DLQ heap
 outbox-kafka = "0.1" # Optional Kafka transport

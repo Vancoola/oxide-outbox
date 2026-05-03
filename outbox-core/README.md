@@ -16,6 +16,7 @@ The core logic and trait definitions for **Oxide Outbox**, a high-performance im
 * **Flexible Idempotency**: Built-in support for multiple deduplication strategies (UUID v7, Provided tokens, or Custom logic).
 * **Builder API**: `OutboxManagerBuilder` gives one stable construction API regardless of which optional features (`dlq`, etc.) are enabled — no surprises from workspace feature unification.
 * **Dead Letter Queue (feature `dlq`)**: Pluggable `DlqHeap` trait + a built-in `DlqProcessor` that drains chronically failing events on a timer and hands them off to the storage adapter for quarantine.
+* **Metrics (feature `metrics`)**: Optional integration with the [`metrics`](https://crates.io/crates/metrics) facade. Emits a counter and a histogram per publish attempt, labelled by `event_type` and `status`.
 * **Extensible Storage & Transport**: Interfaces designed to be implemented by specialized crates (like `outbox-postgres`).
  
 ---
@@ -180,3 +181,21 @@ When the `dlq` feature is enabled:
 * A background `DlqProcessor` is spawned alongside the worker. On each tick it calls `DlqHeap::drain_exceeded(threshold)` and forwards results to `OutboxStorage::quarantine_events` for atomic move into the quarantine table.
 
 For a Redis-backed `DlqHeap` see `outbox-redis`. For a Postgres `quarantine_events` impl see `outbox-postgres`.
+
+---
+
+## Metrics (feature `metrics`)
+
+Enable the `metrics` feature to get observability out of the box. Under the hood `outbox-core` uses the [`metrics`](https://crates.io/crates/metrics) facade — install any compatible exporter (`metrics-exporter-prometheus`, `metrics-exporter-tcp`, etc.) in your application and these will start showing up.
+
+| Metric                               | Type      | Labels                            | When |
+|:-------------------------------------|:----------|:----------------------------------|:-----|
+| `outbox.events_total`                | counter   | `status=success\|error`, `event_type` | Incremented on every publish attempt. |
+| `outbox.publish_duration_seconds`    | histogram | `event_type` (and `status=error` on failed paths) | Records the time from `Transport::publish` start to its result. |
+
+```toml
+[dependencies]
+outbox-core = { version = "0.4", features = ["metrics"] }
+```
+
+The feature is independent of `dlq` — turn either, both, or neither on.
