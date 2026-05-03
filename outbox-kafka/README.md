@@ -20,7 +20,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-outbox-core = "0.3"
+outbox-core = "0.4"
 outbox-kafka = "0.1"
 ```
 
@@ -67,19 +67,19 @@ kafka_config
 let transport = KafkaTransport::new("orders.events", &kafka_config);
 ```
 
-### 3. **Run with OutboxProcessor**
+### 3. **Run with OutboxManager**
 ```rust
 use outbox_core::prelude::*;
 
 // Assuming you have a repository (e.g., Postgres)
-let outbox = OutboxManager::new(
-    Arc::new(storage),
-    Arc::new(transport),
-    config.clone(),
-    shutdown_rx,
-);
+let outbox = OutboxManagerBuilder::new()
+    .storage(Arc::new(storage))
+    .publisher(Arc::new(transport))
+    .config(config.clone())
+    .shutdown_rx(shutdown_rx)
+    .build()?;
 
-processor.run().await?;
+outbox.run().await?;
 ```
 
 ---

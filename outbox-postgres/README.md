@@ -14,6 +14,7 @@ This crate leverages `sqlx` to provide a robust, concurrency-safe, and real-time
 * **Instant Processing**: Native support for PostgreSQL `LISTEN` / `NOTIFY`. The `PostgresOutbox` listens for DB triggers to wake up and process events instantly, minimizing latency and falling back to polling only as a safety net.
 * **Type-Safe JSONB**: Seamlessly serializes your strongly-typed generic domain events (`Event<P>`) into PostgreSQL `jsonb` columns.
 * **Built-in Garbage Collection**: Automatically cleans up old, successfully processed messages to prevent your outbox table from growing indefinitely.
+* **Dead Letter Queue (feature `dlq`)**: Provides `OutboxStorage::quarantine_events` — atomic move from the active outbox table into a dedicated `dead_letter_outbox_events` table in a single transaction.
 
 ## Installation
 
@@ -21,8 +22,8 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-outbox-core = "0.3"
-outbox-postgres = "0.2"
+outbox-core = "0.4"
+outbox-postgres = { version = "0.2", features = ["dlq"] } # drop the feature if you don't need DLQ
 sqlx = { version = "0.8.6", features = ["postgres", "runtime-tokio", "macros", "uuid", "time"] }
 ```
 
@@ -69,6 +70,34 @@ create trigger outbox_events_notify_trigger
     for each row
 execute function notify_outbox_event();
 ```
+
+### DLQ table (feature `dlq`)
+
+The DLQ migration ships with the crate (see `migrations/20260425120000_dlq.sql`). It adds the `outbox_dead_letters` table that `quarantine_events` writes to. Rows arrive here exclusively via the DLQ reaper — workers never read from it, it is meant to be inspected (and cleaned up) by operators.
+
+```postgresql
+create table outbox_dead_letters
+(
+    id                uuid        primary key,
+    idempotency_token text                 default null,
+    event_type        text        not null,
+    payload           jsonb       not null,
+    original_status   status      not null,
+    created_at        timestamptz not null,
+    locked_until      timestamptz not null,
+    failure_count     integer     not null,
+    quarantined_at    timestamptz not null default now(),
+    last_error        text                 default null
+);
+
+create index idx_outbox_dlq_quarantined_at
+    on outbox_dead_letters (quarantined_at desc);
+
+create index idx_outbox_dlq_event_type
+    on outbox_dead_letters (event_type);
+```
+
+Apply it together with the base outbox migration if you enable the `dlq` feature.
 
 ---
 
