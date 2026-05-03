@@ -203,9 +203,7 @@ mod tests {
         let gc = GarbageCollector::new(Arc::new(storage));
         let (tx, mut rx) = watch::channel(false);
 
-        let handle = tokio::spawn(async move {
-            gc.run(Duration::from_secs(3600), &mut rx).await
-        });
+        let handle = tokio::spawn(async move { gc.run(Duration::from_secs(3600), &mut rx).await });
 
         tokio::task::yield_now().await;
         // Dropping the sender is treated as an implicit shutdown — the
@@ -230,9 +228,7 @@ mod tests {
         let gc = GarbageCollector::new(Arc::new(storage));
         let (tx, mut rx) = watch::channel(false);
 
-        let handle = tokio::spawn(async move {
-            gc.run(Duration::from_secs(3600), &mut rx).await
-        });
+        let handle = tokio::spawn(async move { gc.run(Duration::from_secs(3600), &mut rx).await });
 
         tokio::task::yield_now().await;
         // Flip to a value that is still falsy. The loop must observe the
@@ -263,9 +259,7 @@ mod tests {
         let gc = GarbageCollector::new(Arc::new(storage));
         let (tx, mut rx) = watch::channel(false);
 
-        let handle = tokio::spawn(async move {
-            gc.run(Duration::from_secs(60), &mut rx).await
-        });
+        let handle = tokio::spawn(async move { gc.run(Duration::from_secs(60), &mut rx).await });
 
         // Initial immediate tick — let it fire.
         tokio::task::yield_now().await;
@@ -298,9 +292,7 @@ mod tests {
         let gc = GarbageCollector::new(Arc::new(storage));
         let (tx, mut rx) = watch::channel(false);
 
-        let handle = tokio::spawn(async move {
-            gc.run(Duration::from_secs(60), &mut rx).await
-        });
+        let handle = tokio::spawn(async move { gc.run(Duration::from_secs(60), &mut rx).await });
 
         // Drive at least two ticks so we observe the loop surviving an error
         // and proceeding to the next iteration.

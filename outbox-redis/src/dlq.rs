@@ -14,7 +14,7 @@
 //! `DlqEntry::last_error` is always `None` here: the [`DlqHeap`] trait does not
 //! pass an error string into `record_failure`, so there is nothing to persist.
 
-use crate::{RedisProvider};
+use crate::RedisProvider;
 use async_trait::async_trait;
 use outbox_core::prelude::{DlqEntry, DlqHeap, EventId, OutboxError};
 use tracing::error;
@@ -35,7 +35,7 @@ impl DlqHeap for RedisProvider {
             .arg(&member)
             .query_async(&mut conn)
             .await
-            .map_err(map_err)?;
+            .map_err(|e: redis::RedisError| map_err(&e))?;
         Ok(())
     }
 
@@ -49,7 +49,7 @@ impl DlqHeap for RedisProvider {
             .arg(&member)
             .query_async(&mut conn)
             .await
-            .map_err(map_err)?;
+            .map_err(|e: redis::RedisError| map_err(&e))?;
         Ok(())
     }
 
@@ -72,7 +72,7 @@ impl DlqHeap for RedisProvider {
             .arg(threshold)
             .invoke_async(&mut conn)
             .await
-            .map_err(map_err)?;
+            .map_err(|e: redis::RedisError| map_err(&e))?;
 
         let mut out = Vec::with_capacity(raw.len() / 2);
         for pair in raw.chunks_exact(2) {
@@ -102,7 +102,7 @@ impl RedisProvider {
     }
 }
 
-fn map_err(e: redis::RedisError) -> OutboxError {
+fn map_err(e: &redis::RedisError) -> OutboxError {
     error!("Redis DLQ command failed: {e:?}");
     OutboxError::InfrastructureError(e.to_string())
 }

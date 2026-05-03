@@ -9,7 +9,7 @@
 //!    event succeeds → `record_success` clears its counter. The "bad" event
 //!    fails → `record_failure` bumps its counter in Redis.
 //! 3. After `dlq_threshold` failures, the [`DlqProcessor`] tick drains the
-//!    bad event from the Redis ZSet and calls
+//!    bad event from the Redis `ZSet` and calls
 //!    [`OutboxStorage::quarantine_events`], which moves it into the DLQ
 //!    table atomically.
 //!
@@ -26,15 +26,14 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::watch;
-use tracing::{Level, error, info, warn};
 use tracing::level_filters::LevelFilter;
+use tracing::{error, info, warn};
 use tracing_subscriber::filter::Targets;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-
     let filter = Targets::new()
         .with_default(LevelFilter::DEBUG)
         .with_target("sqlx", LevelFilter::WARN);
@@ -101,26 +100,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Inserting GoodPing event...");
     service
-        .add_event(
-            "GoodPing",
-            DemoEvent::Ping("hello".into()),
-            None,
-            || None,
-        )
+        .add_event("GoodPing", DemoEvent::Ping("hello".into()), None, || None)
         .await?;
 
     info!("Inserting CursedPing event (publisher will fail it forever)...");
     service
-        .add_event(
-            "CursedPing",
-            DemoEvent::Ping("doom".into()),
-            None,
-            || None,
-        )
+        .add_event("CursedPing", DemoEvent::Ping("doom".into()), None, || None)
         .await?;
 
     info!("Waiting ~240s for worker to retry, fail, and quarantine the cursed event...");
-    tokio::time::sleep(Duration::from_secs(240)).await;
+    tokio::time::sleep(Duration::from_mins(4)).await;
 
     info!("Shutting down...");
     shutdown_tx.send(true)?;
@@ -155,9 +144,7 @@ impl Transport<DemoEvent> for FlakyPublisher {
                 "FlakyPublisher: refusing to deliver cursed event id={}",
                 event.id.as_uuid()
             );
-            return Err(OutboxError::InfrastructureError(
-                "broker is on fire".into(),
-            ));
+            return Err(OutboxError::InfrastructureError("broker is on fire".into()));
         }
         self.0
             .send(Message(event))

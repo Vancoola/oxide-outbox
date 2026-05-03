@@ -16,6 +16,10 @@ pub struct DlqEntry {
 impl DlqEntry {
     #[must_use]
     pub fn new(id: EventId, failure_count: u32, last_error: Option<String>) -> Self {
-        Self { id, failure_count, last_error }
+        Self {
+            id,
+            failure_count,
+            last_error,
+        }
     }
 }
