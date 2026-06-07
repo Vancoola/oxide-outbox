@@ -81,10 +81,9 @@ pub use crate::dlq::storage::DlqHeap;
 /// `use outbox_core::{OutboxConfig, OutboxService};` instead of glob-importing.
 pub mod prelude {
     pub use crate::{
-        Event, EventId, EventStatus, EventType, IdempotencyDeriver,
-        IdempotencyStorageProvider, IdempotencyStrategy, IdempotencyToken, OutboxConfig,
-        OutboxError, OutboxManager, OutboxManagerBuilder, OutboxService, OutboxStorage,
-        OutboxWriter, Payload, Transport,
+        Event, EventId, EventStatus, EventType, IdempotencyDeriver, IdempotencyStorageProvider,
+        IdempotencyStrategy, IdempotencyToken, OutboxConfig, OutboxError, OutboxManager,
+        OutboxManagerBuilder, OutboxService, OutboxStorage, OutboxWriter, Payload, Transport,
     };
 
     pub use crate::processor::OutboxProcessor;

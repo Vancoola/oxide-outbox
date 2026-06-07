@@ -358,9 +358,7 @@ mod tests {
             config_with(IdempotencyStrategy::Provided),
             Arc::new(idem),
         );
-        let result = service
-            .add_event("t", payload(), Some("dup".into()))
-            .await;
+        let result = service.add_event("t", payload(), Some("dup".into())).await;
         assert!(matches!(result, Err(OutboxError::DuplicateEvent)));
     }
 
