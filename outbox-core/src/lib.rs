@@ -51,30 +51,44 @@ mod publisher;
 mod service;
 mod storage;
 
+// Root re-exports for explicit-import users. The [`prelude`] module exposes
+// the same set as a glob-import shortcut for integrators who prefer it.
+pub use crate::builder::OutboxManagerBuilder;
+pub use crate::config::{IdempotencyDeriver, IdempotencyStrategy, OutboxConfig};
+pub use crate::error::OutboxError;
+pub use crate::idempotency::storage::IdempotencyStorageProvider;
+pub use crate::manager::OutboxManager;
+pub use crate::model::{Event, EventStatus};
+pub use crate::object::{EventId, EventType, IdempotencyToken, Payload};
+pub use crate::publisher::Transport;
+pub use crate::service::OutboxService;
+pub use crate::storage::{OutboxStorage, OutboxWriter};
+
+#[cfg(feature = "dlq")]
+pub use crate::dlq::model::DlqEntry;
+#[cfg(feature = "dlq")]
+pub use crate::dlq::storage::DlqHeap;
+
 /// Curated set of re-exports for typical integrator code.
 ///
 /// Importing `outbox_core::prelude::*` brings in the types you need to build
 /// and run an outbox without having to reach into individual modules. Pulls
 /// in both the public-facing APIs (service, manager, builder, config, errors)
 /// and the traits a storage/transport adapter has to implement.
+///
+/// Every item in the prelude is also available as a direct re-export at the
+/// crate root, so explicit-import users can write
+/// `use outbox_core::{OutboxConfig, OutboxService};` instead of glob-importing.
 pub mod prelude {
-    pub use crate::idempotency::storage::IdempotencyStorageProvider;
-    pub use crate::publisher::Transport;
-    pub use crate::storage::{OutboxStorage, OutboxWriter};
+    pub use crate::{
+        Event, EventId, EventStatus, EventType, IdempotencyDeriver,
+        IdempotencyStorageProvider, IdempotencyStrategy, IdempotencyToken, OutboxConfig,
+        OutboxError, OutboxManager, OutboxManagerBuilder, OutboxService, OutboxStorage,
+        OutboxWriter, Payload, Transport,
+    };
 
-    pub use crate::config::{IdempotencyStrategy, OutboxConfig};
-    pub use crate::manager::OutboxManager;
     pub use crate::processor::OutboxProcessor;
-    pub use crate::service::OutboxService;
-
-    pub use crate::model::{Event, EventStatus};
-    pub use crate::object::{EventId, EventType, IdempotencyToken, Payload};
-
-    pub use crate::builder::OutboxManagerBuilder;
-    pub use crate::error::OutboxError;
 
     #[cfg(feature = "dlq")]
-    pub use crate::dlq::model::DlqEntry;
-    #[cfg(feature = "dlq")]
-    pub use crate::dlq::storage::DlqHeap;
+    pub use crate::{DlqEntry, DlqHeap};
 }

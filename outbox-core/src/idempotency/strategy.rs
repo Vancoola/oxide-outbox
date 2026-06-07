@@ -7,13 +7,8 @@
 
 use crate::config::IdempotencyStrategy;
 use crate::model::Event;
-use serde::Serialize;
-use std::fmt::Debug;
 
-impl<P> IdempotencyStrategy<P>
-where
-    P: Debug + Clone + Serialize,
-{
+impl<P> IdempotencyStrategy<P> {
     /// Resolves the strategy into a concrete token for the event about to be
     /// written.
     ///
@@ -24,30 +19,14 @@ where
     ///   event will be stored without a token.
     /// - [`Uuid`](IdempotencyStrategy::Uuid) — generates a fresh UUID v7;
     ///   `provided_token` is ignored.
-    /// - [`Custom`](IdempotencyStrategy::Custom) — invokes `get_event`,
-    ///   passes the resulting [`Event`] to the user-supplied function, and
-    ///   wraps the returned `String` in `Some`.
+    /// - [`Custom`](IdempotencyStrategy::Custom) — passes `event` to the
+    ///   user-supplied callback and wraps the returned `String` in `Some`.
     /// - [`None`](IdempotencyStrategy::None) — returns `None`; neither
-    ///   `provided_token` nor `get_event` is used.
-    ///
-    /// `get_event` is only evaluated for the `Custom` branch, so callers can
-    /// pass `|| None` for every other strategy.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the strategy is set to `Custom`, but the provided `get_event`
-    /// closure returns `None`. The panic message is
-    /// `"Strategy is Custom, but no Event context provided"`.
-    pub fn invoke<F>(&self, provided_token: Option<String>, get_event: F) -> Option<String>
-    where
-        F: FnOnce() -> Option<Event<P>>,
-    {
+    ///   `provided_token` nor `event` is used.
+    pub fn invoke(&self, provided_token: Option<String>, event: &Event<P>) -> Option<String> {
         match self {
             IdempotencyStrategy::Provided => provided_token,
-            IdempotencyStrategy::Custom(f) => {
-                let event = get_event().expect("Strategy is Custom, but no Event context provided");
-                Some(f(&event))
-            }
+            IdempotencyStrategy::Custom(f) => Some(f(event)),
             IdempotencyStrategy::Uuid => Some(uuid::Uuid::now_v7().to_string()),
             // IdempotencyStrategy::HashPayload => {
             //     Some("hash_payload".to_string())
@@ -64,7 +43,7 @@ mod tests {
     use crate::object::{EventType, Payload};
     use rstest::rstest;
     use serde::{Deserialize, Serialize};
-    use std::cell::Cell;
+    use std::sync::Arc;
 
     #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
     struct TestPayload(String);
@@ -81,7 +60,7 @@ mod tests {
     fn provided_returns_passed_token() {
         let s = IdempotencyStrategy::<TestPayload>::Provided;
         assert_eq!(
-            s.invoke(Some("abc".into()), || None),
+            s.invoke(Some("abc".into()), &test_event()),
             Some("abc".to_string())
         );
     }
@@ -89,19 +68,13 @@ mod tests {
     #[rstest]
     fn provided_returns_none_when_no_token_passed() {
         let s = IdempotencyStrategy::<TestPayload>::Provided;
-        assert_eq!(s.invoke(None, || None), None);
-    }
-
-    #[rstest]
-    fn provided_does_not_invoke_get_event() {
-        let s = IdempotencyStrategy::<TestPayload>::Provided;
-        let _ = s.invoke(Some("x".into()), || panic!("get_event must not be called"));
+        assert_eq!(s.invoke(None, &test_event()), None);
     }
 
     #[rstest]
     fn uuid_generates_non_empty_token() {
         let s = IdempotencyStrategy::<TestPayload>::Uuid;
-        let token = s.invoke(None, || None).expect("Uuid must yield Some");
+        let token = s.invoke(None, &test_event()).expect("Uuid must yield Some");
         assert!(!token.is_empty());
         // Должен парситься как UUID.
         assert!(
@@ -113,19 +86,15 @@ mod tests {
     #[rstest]
     fn uuid_generates_unique_tokens_across_calls() {
         let s = IdempotencyStrategy::<TestPayload>::Uuid;
-        let t1 = s.invoke(None, || None).unwrap();
-        let t2 = s.invoke(None, || None).unwrap();
+        let t1 = s.invoke(None, &test_event()).unwrap();
+        let t2 = s.invoke(None, &test_event()).unwrap();
         assert_ne!(t1, t2);
     }
 
     #[rstest]
-    fn uuid_ignores_provided_token_and_does_not_invoke_get_event() {
+    fn uuid_ignores_provided_token() {
         let s = IdempotencyStrategy::<TestPayload>::Uuid;
-        let token = s
-            .invoke(Some("user-tok".into()), || {
-                panic!("get_event must not be called")
-            })
-            .unwrap();
+        let token = s.invoke(Some("user-tok".into()), &test_event()).unwrap();
         assert_ne!(token, "user-tok");
     }
 
@@ -134,13 +103,8 @@ mod tests {
         fn derive(e: &Event<TestPayload>) -> String {
             format!("d:{}", e.payload.as_value().0)
         }
-        let s = IdempotencyStrategy::<TestPayload>::Custom(derive);
-        let called = Cell::new(false);
-        let result = s.invoke(None, || {
-            called.set(true);
-            Some(test_event())
-        });
-        assert!(called.get());
+        let s = IdempotencyStrategy::<TestPayload>::Custom(Arc::new(derive));
+        let result = s.invoke(None, &test_event());
         assert_eq!(result, Some("d:p".to_string()));
     }
 
@@ -149,30 +113,24 @@ mod tests {
         fn derive(_: &Event<TestPayload>) -> String {
             "from-closure".into()
         }
-        let s = IdempotencyStrategy::<TestPayload>::Custom(derive);
-        let result = s.invoke(Some("user".into()), || Some(test_event()));
+        let s = IdempotencyStrategy::<TestPayload>::Custom(Arc::new(derive));
+        let result = s.invoke(Some("user".into()), &test_event());
         assert_eq!(result, Some("from-closure".to_string()));
     }
 
     #[rstest]
-    #[should_panic(expected = "Strategy is Custom, but no Event context provided")]
-    fn custom_panics_when_get_event_returns_none() {
-        fn derive(_: &Event<TestPayload>) -> String {
-            "x".into()
-        }
-        let s = IdempotencyStrategy::<TestPayload>::Custom(derive);
-        let _ = s.invoke(None, || None);
+    fn custom_accepts_closure_that_captures_state() {
+        let prefix = "tenant-a".to_string();
+        let s = IdempotencyStrategy::<TestPayload>::Custom(Arc::new(move |e| {
+            format!("{prefix}:{}", e.payload.as_value().0)
+        }));
+        let result = s.invoke(None, &test_event());
+        assert_eq!(result, Some("tenant-a:p".to_string()));
     }
 
     #[rstest]
     fn none_returns_none_and_ignores_inputs() {
         let s = IdempotencyStrategy::<TestPayload>::None;
-        assert_eq!(s.invoke(Some("x".into()), || None), None);
-    }
-
-    #[rstest]
-    fn none_does_not_invoke_get_event() {
-        let s = IdempotencyStrategy::<TestPayload>::None;
-        let _ = s.invoke(None, || panic!("get_event must not be called"));
+        assert_eq!(s.invoke(Some("x".into()), &test_event()), None);
     }
 }

@@ -27,11 +27,10 @@ use tracing::{debug, error, info, trace};
 /// (`PT`). After [`run`](Self::run) is invoked, it will keep processing events
 /// until the watched shutdown channel flips to `true`.
 ///
-/// Prefer constructing through
-/// [`OutboxManagerBuilder`](crate::builder::OutboxManagerBuilder) rather than
-/// calling [`new`](Self::new) directly — the builder reports missing
-/// dependencies with a structured [`OutboxError::ConfigError`] instead of
-/// requiring all arguments to line up positionally.
+/// Construct one through
+/// [`OutboxManagerBuilder`](crate::builder::OutboxManagerBuilder): it reports
+/// missing dependencies with a structured [`OutboxError::ConfigError`] and
+/// shields callers from the manager's `cfg`-dependent constructor signature.
 pub struct OutboxManager<S, P, PT>
 where
     PT: Debug + Clone + Serialize,
@@ -53,14 +52,11 @@ where
     /// Direct constructor used by
     /// [`OutboxManagerBuilder`](crate::builder::OutboxManagerBuilder).
     ///
-    /// Application code should normally go through the builder, which
-    /// validates that every required collaborator has been supplied.
-    ///
-    /// This signature is compiled when the `dlq` feature is enabled and takes
-    /// an extra [`DlqHeap`](crate::dlq::storage::DlqHeap) that tracks per-event
-    /// failure counts.
+    /// Crate-private because the signature changes with the `dlq` feature flag,
+    /// which makes it unstable as a public entry point. Application code goes
+    /// through the builder.
     #[cfg(feature = "dlq")]
-    pub fn new(
+    pub(crate) fn new(
         storage: Arc<S>,
         publisher: Arc<P>,
         config: Arc<OutboxConfig<PT>>,
@@ -79,12 +75,9 @@ where
     /// Direct constructor used by
     /// [`OutboxManagerBuilder`](crate::builder::OutboxManagerBuilder).
     ///
-    /// Application code should normally go through the builder.
-    ///
-    /// This signature is compiled when the `dlq` feature is disabled and omits
-    /// the DLQ heap argument.
+    /// Crate-private; see the `dlq`-enabled variant for the rationale.
     #[cfg(not(feature = "dlq"))]
-    pub fn new(
+    pub(crate) fn new(
         storage: Arc<S>,
         publisher: Arc<P>,
         config: Arc<OutboxConfig<PT>>,
@@ -116,11 +109,13 @@ where
     ///
     /// # Errors
     ///
-    /// Returns an [`OutboxError`] if the worker encounters a terminal failure
-    /// that it cannot recover from. In the current implementation transient
-    /// errors from the storage and transport layers are logged and the loop
-    /// continues, so a returned error signals that the worker observed a
-    /// graceful shutdown via `shutdown_rx`.
+    /// The `Result` is reserved for forward compatibility. In the current
+    /// implementation `run` only returns `Ok(())` — it returns when the
+    /// shutdown signal flips to `true`. Transient storage and transport
+    /// failures are logged via `tracing::error!` and the loop continues after
+    /// a short back-off. A future revision may surface terminal errors (for
+    /// example, an unrecoverable storage configuration) through the `Err`
+    /// arm; treat `Err` as a hard stop if and when it appears.
     ///
     /// # Example
     ///

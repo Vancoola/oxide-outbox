@@ -11,24 +11,60 @@ pub trait KafkaKeyExtractable {
     fn kafka_key(&self) -> Vec<u8>;
 }
 
+/// Kafka transport for outbox events.
+///
+/// The transport enables the **idempotent producer** by default
+/// (`enable.idempotence=true`) — this is required to preserve per-partition
+/// ordering when `librdkafka` retries on transient errors. Without it, retries
+/// combined with `max.in.flight.requests.per.connection > 1` can reorder
+/// messages on the wire, which silently breaks the outbox's at-least-once,
+/// in-order guarantee.
+///
+/// If the caller explicitly sets `enable.idempotence` in [`ClientConfig`],
+/// their setting is respected and not overridden.
 pub struct KafkaTransport {
     producer: FutureProducer,
     topic: String,
+    send_timeout: Duration,
 }
 
 impl KafkaTransport {
-    /// Creates a new `KafkaTransport`.
+    /// Default send timeout applied to each `FutureRecord` until overridden via
+    /// [`with_send_timeout`](Self::with_send_timeout).
+    pub const DEFAULT_SEND_TIMEOUT: Duration = Duration::from_secs(10);
+
+    /// Creates a new [`KafkaTransport`] wired to `topic`.
     ///
-    /// # Panics
+    /// `enable.idempotence=true` is set on the underlying producer unless the
+    /// caller has already specified it in `config`. See the type-level
+    /// documentation for why this matters.
     ///
-    /// Panics if the underlying Kafka `FutureProducer` cannot be created
-    /// from the provided [`ClientConfig`]. This typically indicates an
-    /// invalid configuration.
-    pub fn new(topic: &str, config: &ClientConfig) -> Self {
-        Self {
-            topic: topic.to_string(),
-            producer: config.create().expect("Failed to create Kafka producer"),
+    /// # Errors
+    ///
+    /// Returns [`OutboxError::ConfigError`] if `librdkafka` rejects the
+    /// resulting configuration (for example, conflicting settings between
+    /// the caller-supplied values and the idempotence requirements).
+    pub fn new(topic: &str, config: &ClientConfig) -> Result<Self, OutboxError> {
+        let mut cfg = config.clone();
+        if cfg.get("enable.idempotence").is_none() {
+            cfg.set("enable.idempotence", "true");
         }
+        let producer: FutureProducer = cfg
+            .create()
+            .map_err(|e| OutboxError::ConfigError(e.to_string()))?;
+        Ok(Self {
+            topic: topic.to_string(),
+            producer,
+            send_timeout: Self::DEFAULT_SEND_TIMEOUT,
+        })
+    }
+
+    /// Overrides the per-record send timeout passed to
+    /// [`FutureProducer::send`].
+    #[must_use]
+    pub fn with_send_timeout(mut self, send_timeout: Duration) -> Self {
+        self.send_timeout = send_timeout;
+        self
     }
 }
 
@@ -70,7 +106,7 @@ where
                     .payload(&payload_bytes)
                     .key(&event.payload.as_value().kafka_key())
                     .headers(headers),
-                Duration::from_secs(10),
+                self.send_timeout,
             )
             .await
             .map_err(|_| OutboxError::InfrastructureError("Failed to publish event".to_string()))?;

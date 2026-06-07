@@ -16,16 +16,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let pool =
         PgPool::connect("postgresql://postgres:mysecretpassword@localhost:5432/outbox").await?;
-    let config = Arc::new(OutboxConfig {
-        batch_size: 100,
-        retention_days: 1,
-        gc_interval_secs: 10,
-        poll_interval_secs: 100,
-        lock_timeout_mins: 1,
-        idempotency_strategy: IdempotencyStrategy::None,
-        dlq_threshold: 10,
-        dlq_interval_secs: 300,
-    });
+    let mut config = OutboxConfig::<MyEvent>::default();
+    config.retention_days = 1;
+    config.gc_interval_secs = 10;
+    config.poll_interval_secs = 100;
+    config.lock_timeout_mins = 1;
+    let config = Arc::new(config);
 
     let storage = PostgresOutbox::new(pool.clone(), config.clone());
     let writer = Arc::new(PostgresWriter(pool.clone()));
@@ -64,7 +60,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "OrderCreated",
             MyEvent::HiOutbox("Hi!".into()),
             Some(String::from("r_token")),
-            || None,
         )
         .await?;
     info!("Inserting test 2 event into DB...");
@@ -73,7 +68,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "OrderCreated",
             MyEvent::HiOutbox("Hi!".into()),
             Some(String::from("r_token")),
-            || None,
         )
         .await
     {

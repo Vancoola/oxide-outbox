@@ -154,20 +154,18 @@ where
     /// Returns [`OutboxError::ConfigError`] with a message identifying the
     /// first missing dependency if any required field has not been set.
     /// The diagnostic mentions one of: `Storage`, `Publisher`, `Config`,
-    /// `Shutdown channel`, or — under feature `dlq` — `Dlq heap`.
+    /// `Shutdown channel`, or — under feature `dlq` — `DLQ heap`.
     pub fn build(self) -> Result<OutboxManager<S, P, PT>, OutboxError> {
         #[cfg(feature = "dlq")]
         return Ok(OutboxManager::new(
             self.storage
-                .ok_or_else(|| OutboxError::ConfigError("Storage config is missing".to_string()))?,
-            self.publisher.ok_or_else(|| {
-                OutboxError::ConfigError("Publisher config is missing".to_string())
-            })?,
+                .ok_or_else(|| OutboxError::ConfigError("Storage is missing".to_string()))?,
+            self.publisher
+                .ok_or_else(|| OutboxError::ConfigError("Publisher is missing".to_string()))?,
             self.config
-                .ok_or_else(|| OutboxError::ConfigError("Config config is missing".to_string()))?,
-            self.dlq_heap.ok_or_else(|| {
-                OutboxError::ConfigError("Dlq heap config is missing".to_string())
-            })?,
+                .ok_or_else(|| OutboxError::ConfigError("Config is missing".to_string()))?,
+            self.dlq_heap
+                .ok_or_else(|| OutboxError::ConfigError("DLQ heap is missing".to_string()))?,
             self.shutdown_rx.ok_or_else(|| {
                 OutboxError::ConfigError("Shutdown channel is missing".to_string())
             })?,
@@ -175,12 +173,11 @@ where
         #[cfg(not(feature = "dlq"))]
         return Ok(OutboxManager::new(
             self.storage
-                .ok_or_else(|| OutboxError::ConfigError("Storage config is missing".to_string()))?,
-            self.publisher.ok_or_else(|| {
-                OutboxError::ConfigError("Publisher config is missing".to_string())
-            })?,
+                .ok_or_else(|| OutboxError::ConfigError("Storage is missing".to_string()))?,
+            self.publisher
+                .ok_or_else(|| OutboxError::ConfigError("Publisher is missing".to_string()))?,
             self.config
-                .ok_or_else(|| OutboxError::ConfigError("Config config is missing".to_string()))?,
+                .ok_or_else(|| OutboxError::ConfigError("Config is missing".to_string()))?,
             self.shutdown_rx.ok_or_else(|| {
                 OutboxError::ConfigError("Shutdown channel is missing".to_string())
             })?,
@@ -364,7 +361,7 @@ mod tests {
             .config(default_config())
             .shutdown_rx(rx)
             .build();
-        assert_config_error_with(result, "Dlq");
+        assert_config_error_with(result, "DLQ");
     }
 
     #[rstest]

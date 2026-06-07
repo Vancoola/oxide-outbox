@@ -7,38 +7,37 @@
 //! new events are written.
 
 use crate::model::Event;
-use serde::Serialize;
-use std::fmt::Debug;
+use std::sync::Arc;
 
 /// Runtime configuration shared by the producer and worker sides.
 ///
 /// Generic over the user's domain event payload type `P` because the
-/// [`Custom`](IdempotencyStrategy::Custom) strategy variant holds a function
-/// pointer of type `fn(&Event<P>) -> String`.
+/// [`Custom`](IdempotencyStrategy::Custom) strategy variant holds a callback
+/// that derives an idempotency token from `Event<P>`.
 ///
-/// All fields are public so callers can construct the struct with a literal or
-/// start from [`default`](Self::default) and override selected fields.
+/// Fields are public so callers can override individual values, but the
+/// struct is `#[non_exhaustive]` — start from [`default`](Self::default) and
+/// mutate the fields you care about rather than building a struct literal.
+/// New fields can then be added in a minor release without breaking call
+/// sites.
 ///
 /// # Example
 ///
 /// ```
-/// use outbox_core::prelude::*;
+/// use outbox_core::OutboxConfig;
 ///
 /// # #[derive(Debug, Clone, serde::Serialize)]
 /// # struct MyEvent;
-/// let cfg: OutboxConfig<MyEvent> = OutboxConfig {
-///     batch_size: 200,
-///     poll_interval_secs: 2,
-///     ..OutboxConfig::default()
-/// };
+/// let mut cfg: OutboxConfig<MyEvent> = OutboxConfig::default();
+/// cfg.batch_size = 200;
+/// cfg.poll_interval_secs = 2;
+///
 /// assert_eq!(cfg.batch_size, 200);
 /// assert_eq!(cfg.retention_days, 7); // inherited from default
 /// ```
 #[derive(Clone)]
-pub struct OutboxConfig<P>
-where
-    P: Debug + Clone + Serialize,
-{
+#[non_exhaustive]
+pub struct OutboxConfig<P> {
     /// Maximum number of events fetched per processing iteration.
     pub batch_size: u32,
     /// How long sent events are kept before the garbage collector deletes
@@ -73,10 +72,7 @@ where
     pub dlq_interval_secs: u64,
 }
 
-impl<P> Default for OutboxConfig<P>
-where
-    P: Debug + Clone + Serialize,
-{
+impl<P> Default for OutboxConfig<P> {
     /// Returns a configuration suitable as a starting point.
     ///
     /// The defaults are:
@@ -108,6 +104,13 @@ where
     }
 }
 
+/// Shared callback used by [`IdempotencyStrategy::Custom`] to derive an
+/// idempotency token from the event about to be written.
+///
+/// Wrapped in [`Arc`] so the strategy stays [`Clone`] without forcing the
+/// callback itself to be `Clone`, and shared safely across threads.
+pub type IdempotencyDeriver<P> = Arc<dyn Fn(&Event<P>) -> String + Send + Sync + 'static>;
+
 /// How an idempotency token is produced when a new event is written.
 ///
 /// The variant is evaluated inside
@@ -116,17 +119,17 @@ where
 /// [`IdempotencyStorageProvider`](crate::idempotency::storage::IdempotencyStorageProvider)
 /// is wired, the produced token is also used to reserve uniqueness up front.
 #[derive(Clone)]
-pub enum IdempotencyStrategy<P>
-where
-    P: Debug + Clone + Serialize,
-{
+pub enum IdempotencyStrategy<P> {
     /// Uses the caller-supplied token as-is. Passing `None` at call site means
     /// the event is stored without a token and no reservation is attempted.
     Provided,
-    /// Derives the token by applying the given function to the event about to
-    /// be written. The `add_event` callback `get_event` must return `Some`
-    /// for this variant — otherwise the service panics.
-    Custom(fn(&Event<P>) -> String),
+    /// Derives the token by applying the given callback to the event about to
+    /// be written. See [`IdempotencyDeriver`].
+    ///
+    /// Prefer constructing this variant via
+    /// [`IdempotencyStrategy::custom`] so the `Arc` wrapping stays an
+    /// implementation detail.
+    Custom(IdempotencyDeriver<P>),
     /// Generates a fresh UUID v7 token at write time. Any caller-supplied
     /// token is ignored.
     Uuid,
@@ -135,6 +138,29 @@ where
     /// Disables idempotency — no token is produced and no reservation is
     /// attempted. This is the default.
     None,
+}
+
+impl<P> IdempotencyStrategy<P> {
+    /// Builds an [`IdempotencyStrategy::Custom`] from a callback without
+    /// requiring the caller to wrap it in [`Arc`].
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use outbox_core::prelude::*;
+    ///
+    /// # #[derive(Debug, Clone, serde::Serialize)]
+    /// # struct MyEvent;
+    /// let strategy: IdempotencyStrategy<MyEvent> =
+    ///     IdempotencyStrategy::custom(|event| event.id.as_uuid().to_string());
+    /// # let _ = strategy;
+    /// ```
+    pub fn custom<F>(f: F) -> Self
+    where
+        F: Fn(&Event<P>) -> String + Send + Sync + 'static,
+    {
+        Self::Custom(Arc::new(f))
+    }
 }
 
 #[cfg(test)]
@@ -213,17 +239,14 @@ mod tests {
     }
 
     #[rstest]
-    fn clone_preserves_custom_strategy_function_pointer() {
-        fn derive(_: &Event<TestPayload>) -> String {
-            "fp".into()
-        }
+    fn clone_preserves_custom_strategy_callback() {
         let cfg = OutboxConfig::<TestPayload> {
             batch_size: 1,
             retention_days: 1,
             gc_interval_secs: 1,
             poll_interval_secs: 1,
             lock_timeout_mins: 1,
-            idempotency_strategy: IdempotencyStrategy::Custom(derive),
+            idempotency_strategy: IdempotencyStrategy::custom(|_| "fp".to_string()),
             dlq_threshold: 10,
             dlq_interval_secs: 1,
         };
@@ -239,5 +262,21 @@ mod tests {
             }
             _ => panic!("expected Custom variant after clone"),
         }
+    }
+
+    #[rstest]
+    fn custom_constructor_wraps_callback_into_arc() {
+        let prefix = "tenant-x".to_string();
+        let strategy: IdempotencyStrategy<TestPayload> =
+            IdempotencyStrategy::custom(move |_| format!("{prefix}:tok"));
+        let IdempotencyStrategy::Custom(f) = strategy else {
+            panic!("expected Custom variant");
+        };
+        let e = Event::new(
+            crate::object::EventType::new("t"),
+            crate::object::Payload::new(TestPayload),
+            None,
+        );
+        assert_eq!(f(&e), "tenant-x:tok");
     }
 }

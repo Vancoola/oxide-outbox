@@ -93,10 +93,8 @@ where
     ///
     /// - `Provided` — uses `provided_token` as-is (`None` skips reservation).
     /// - `Uuid` — generates a fresh UUID v7; `provided_token` is ignored.
-    /// - `Custom(fn)` — calls `get_event` and passes the resulting
-    ///   [`Event`] to the closure. The `get_event` callback is **only**
-    ///   invoked by this branch, so for other strategies callers can safely
-    ///   pass `|| None`.
+    /// - `Custom(callback)` — passes the event about to be written to the
+    ///   callback and uses the returned `String` as the token.
     /// - `None` — no token is produced and reservation is skipped.
     ///
     /// If an idempotency provider is configured and a token was produced, it
@@ -107,11 +105,6 @@ where
     /// Returns [`OutboxError::DuplicateEvent`] if the event token has already
     /// been used. Returns any [`OutboxError`] variant propagated from the
     /// reservation call or from the writer's `insert_event`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the idempotency strategy is set to `Custom`, but `get_event`
-    /// returns `None`.
     ///
     /// # Example
     ///
@@ -127,25 +120,24 @@ where
     /// # ) -> Result<(), OutboxError>
     /// # where MyEvent: std::fmt::Debug + Clone + serde::Serialize + Send + Sync,
     /// # {
-    /// // Uuid / None strategies — no event context needed.
-    /// service.add_event("order.created", payload, None, || None).await?;
+    /// service.add_event("order.created", payload, None).await?;
     /// # Ok(()) }
     /// ```
-    pub async fn add_event<F>(
+    pub async fn add_event(
         &self,
         event_type: &str,
         payload: P,
         provided_token: Option<String>,
-        get_event: F,
     ) -> Result<(), OutboxError>
     where
-        F: FnOnce() -> Option<Event<P>>,
         P: Debug + Clone + Serialize + Send + Sync,
     {
+        let mut event = Event::new(EventType::new(event_type), Payload::new(payload), None);
+
         let i_token = self
             .config
             .idempotency_strategy
-            .invoke(provided_token, get_event)
+            .invoke(provided_token, &event)
             .map(IdempotencyToken::new);
 
         if let Some(i_provider) = &self.idempotency_storage
@@ -155,7 +147,7 @@ where
             return Err(OutboxError::DuplicateEvent);
         }
 
-        let event = Event::new(EventType::new(event_type), Payload::new(payload), i_token);
+        event.idempotency_token = i_token;
         self.writer.insert_event(event).await
     }
 }
@@ -203,7 +195,7 @@ mod tests {
             .returning(|_| Ok(()));
 
         let service = OutboxService::new(Arc::new(writer), config_with(IdempotencyStrategy::None));
-        let result = service.add_event("t", payload(), None, || None).await;
+        let result = service.add_event("t", payload(), None).await;
         assert!(result.is_ok());
     }
 
@@ -222,7 +214,7 @@ mod tests {
             .returning(|_| Ok(()));
 
         let service = OutboxService::new(Arc::new(writer), config_with(IdempotencyStrategy::Uuid));
-        let result = service.add_event("t", payload(), None, || None).await;
+        let result = service.add_event("t", payload(), None).await;
         assert!(result.is_ok());
     }
 
@@ -259,7 +251,7 @@ mod tests {
             config_with(IdempotencyStrategy::Uuid),
             Arc::new(idem),
         );
-        let result = service.add_event("t", payload(), None, || None).await;
+        let result = service.add_event("t", payload(), None).await;
         assert!(result.is_ok());
     }
 
@@ -290,7 +282,7 @@ mod tests {
             Arc::new(idem),
         );
         let result = service
-            .add_event("t", payload(), Some("user-tok".to_string()), || None)
+            .add_event("t", payload(), Some("user-tok".to_string()))
             .await;
         assert!(result.is_ok());
     }
@@ -314,7 +306,7 @@ mod tests {
             config_with(IdempotencyStrategy::Provided),
             Arc::new(idem),
         );
-        let result = service.add_event("t", payload(), None, || None).await;
+        let result = service.add_event("t", payload(), None).await;
         assert!(result.is_ok());
     }
 
@@ -345,37 +337,11 @@ mod tests {
 
         let service = OutboxService::with_idempotency(
             Arc::new(writer),
-            config_with(IdempotencyStrategy::Custom(derive)),
+            config_with(IdempotencyStrategy::Custom(Arc::new(derive))),
             Arc::new(idem),
         );
-        let result = service
-            .add_event("t", payload(), None, || {
-                Some(Event::new(
-                    EventType::new("t"),
-                    Payload::new(payload()),
-                    None,
-                ))
-            })
-            .await;
+        let result = service.add_event("t", payload(), None).await;
         assert!(result.is_ok());
-    }
-
-    #[rstest]
-    #[should_panic(expected = "Strategy is Custom, but no Event context provided")]
-    #[tokio::test]
-    async fn custom_strategy_panics_when_get_event_returns_none() {
-        fn derive(_: &Event<TestPayload>) -> String {
-            "x".into()
-        }
-        let writer = MockOutboxWriter::<TestPayload>::new();
-        let idem = MockIdempotencyStorageProvider::new();
-
-        let service = OutboxService::with_idempotency(
-            Arc::new(writer),
-            config_with(IdempotencyStrategy::Custom(derive)),
-            Arc::new(idem),
-        );
-        let _ = service.add_event("t", payload(), None, || None).await;
     }
 
     #[rstest]
@@ -393,7 +359,7 @@ mod tests {
             Arc::new(idem),
         );
         let result = service
-            .add_event("t", payload(), Some("dup".into()), || None)
+            .add_event("t", payload(), Some("dup".into()))
             .await;
         assert!(matches!(result, Err(OutboxError::DuplicateEvent)));
     }
@@ -414,7 +380,7 @@ mod tests {
             config_with(IdempotencyStrategy::Uuid),
             Arc::new(idem),
         );
-        let result = service.add_event("t", payload(), None, || None).await;
+        let result = service.add_event("t", payload(), None).await;
         assert!(matches!(result, Err(OutboxError::InfrastructureError(_))));
     }
 
@@ -435,7 +401,7 @@ mod tests {
             config_with(IdempotencyStrategy::Uuid),
             Arc::new(idem),
         );
-        let result = service.add_event("t", payload(), None, || None).await;
+        let result = service.add_event("t", payload(), None).await;
         assert!(matches!(result, Err(OutboxError::DatabaseError(_))));
     }
 }

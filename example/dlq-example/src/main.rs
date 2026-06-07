@@ -53,16 +53,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let redis = RedisProvider::new("redis://localhost:6379", redis_cfg).await?;
     let dlq_heap: Arc<dyn DlqHeap> = Arc::new(redis);
 
-    let config = Arc::new(OutboxConfig {
-        batch_size: 100,
-        retention_days: 1,
-        gc_interval_secs: 60,
-        poll_interval_secs: 2,
-        lock_timeout_mins: 1,
-        idempotency_strategy: IdempotencyStrategy::None,
-        dlq_threshold: 3,
-        dlq_interval_secs: 5,
-    });
+    let mut config = OutboxConfig::<DemoEvent>::default();
+    config.retention_days = 1;
+    config.gc_interval_secs = 60;
+    config.poll_interval_secs = 2;
+    config.lock_timeout_mins = 1;
+    config.dlq_threshold = 3;
+    config.dlq_interval_secs = 5;
+    let config = Arc::new(config);
 
     let storage = PostgresOutbox::new(pool.clone(), config.clone());
     let writer = Arc::new(PostgresWriter(pool.clone()));
@@ -100,12 +98,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Inserting GoodPing event...");
     service
-        .add_event("GoodPing", DemoEvent::Ping("hello".into()), None, || None)
+        .add_event("GoodPing", DemoEvent::Ping("hello".into()), None)
         .await?;
 
     info!("Inserting CursedPing event (publisher will fail it forever)...");
     service
-        .add_event("CursedPing", DemoEvent::Ping("doom".into()), None, || None)
+        .add_event("CursedPing", DemoEvent::Ping("doom".into()), None)
         .await?;
 
     info!("Waiting ~240s for worker to retry, fail, and quarantine the cursed event...");

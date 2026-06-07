@@ -37,6 +37,7 @@ impl RedisProvider {
             connection: conn,
             #[cfg(feature = "moka")]
             local_cache: moka::future::Cache::builder()
+                .max_capacity(config.local_cache_capacity)
                 .time_to_live(config.ttl)
                 .build(),
             config,
