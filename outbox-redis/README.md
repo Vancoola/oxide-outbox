@@ -64,10 +64,9 @@ let redis_provider = RedisProvider::new(
 When creating your service, use `with_idempotency` to attach the Redis provider.
 ```rust
 // Use IdempotencyStrategy::Provided to respect tokens passed by the client
-let config = Arc::new(OutboxConfig {
-    idempotency_strategy: IdempotencyStrategy::Provided,
-    ..Default::default()
-});
+let mut config = OutboxConfig::<MyEvent>::default();
+config.idempotency_strategy = IdempotencyStrategy::Provided;
+let config = Arc::new(config);
 
 let service = OutboxService::with_idempotency(
     writer, 
@@ -80,7 +79,6 @@ service.add_event(
     "OrderCreated",
     MyEvent::HiOutbox("First request".into()),
     Some("unique_token_123".into()),
-    || None,
 ).await?;
 
 // This second call with the same token will return an DuplicateEvent 
@@ -89,7 +87,6 @@ let result = service.add_event(
     "OrderCreated",
     MyEvent::HiOutbox("Duplicate request".into()),
     Some("unique_token_123".into()),
-    || None,
 ).await;
 ```
 

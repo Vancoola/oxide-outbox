@@ -118,5 +118,5 @@ let config = Arc::new(OutboxConfig::default()); // Configure as needed
 
 let postgres_storage = PostgresOutbox::<MyEvent>::new(pool, config.clone());
 
-// Pass postgres_storage to OutboxManager::new(...)
+// Pass postgres_storage to OutboxManagerBuilder::new().storage(...)
 ```

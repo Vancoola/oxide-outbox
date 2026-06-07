@@ -88,16 +88,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. Setup Database Pool & Config
     let pool = PgPool::connect("postgresql://postgres:mysecretpassword@localhost:5432/outbox").await?;
     
-    let config = Arc::new(OutboxConfig {
-        batch_size: 100,
-        retention_days: 1,
-        gc_interval_secs: 10,
-        poll_interval_secs: 100,
-        lock_timeout_mins: 1,
-        idempotency_strategy: IdempotencyStrategy::None,
-        dlq_threshold: 10,        // only used when feature `dlq` is enabled
-        dlq_interval_secs: 300,   // only used when feature `dlq` is enabled
-    });
+    let mut config = OutboxConfig::<MyEvent>::default();
+    config.batch_size = 100;
+    config.retention_days = 1;
+    config.gc_interval_secs = 10;
+    config.poll_interval_secs = 100;
+    config.lock_timeout_mins = 1;
+    config.idempotency_strategy = IdempotencyStrategy::None;
+    config.dlq_threshold = 10;        // only used when feature `dlq` is enabled
+    config.dlq_interval_secs = 300;   // only used when feature `dlq` is enabled
+    let config = Arc::new(config);
 
     // 2. Initialize Storage and Publisher
     let storage = PostgresOutbox::new(pool.clone(), config.clone());
@@ -138,7 +138,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "OrderCreated",
         MyEvent::HiOutbox("Hi!".into()),
         Some(String::from("r_token")), // Provided idempotency token
-        || None,
     ).await?;
 
     info!("Testing deduplication...");
@@ -146,7 +145,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "OrderCreated",
         MyEvent::HiOutbox("Hi!".into()),
         Some(String::from("r_token")), // Same token should trigger deduplication (if configured)
-        || None,
     ).await {
         error!("Deduplication error: {}", e);
     }

@@ -63,8 +63,10 @@ kafka_config
     .set("bootstrap.servers", "localhost:9092")
     .set("message.timeout.ms", "5000");
 
-// All variants of OrderEvent will be sent to this topic
-let transport = KafkaTransport::new("orders.events", &kafka_config);
+// All variants of OrderEvent will be sent to this topic.
+// `new` enables the idempotent producer by default and returns Result —
+// invalid configurations surface as `OutboxError::ConfigError` instead of a panic.
+let transport = KafkaTransport::new("orders.events", &kafka_config)?;
 ```
 
 ### 3. **Run with OutboxManager**
