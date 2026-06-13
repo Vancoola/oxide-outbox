@@ -140,13 +140,28 @@ where
 ///
 /// Separated from [`OutboxStorage`] so a service that only writes events can
 /// depend on the narrow surface it actually uses.
-#[cfg_attr(test, mockall::automock)]
+///
+/// The associated [`Executor`](Self::Executor) type lets the caller decide
+/// what kind of connection or transaction handle is threaded into the insert,
+/// which is what makes a *transactional* outbox write possible: a single
+/// `&mut sqlx::Transaction` can carry both the caller's business `INSERT` and
+/// the outbox row in the same commit.
 #[async_trait]
 pub trait OutboxWriter<P>
 where
     P: Debug + Clone + Serialize + Send + Sync,
 {
-    /// Persists a single [`Event`] row in the outbox table.
+    /// The executor handle accepted by [`insert_event`](Self::insert_event).
+    ///
+    /// For sqlx-based backends this is typically `&'a mut sqlx::PgConnection`,
+    /// which can be borrowed from a held transaction via `&mut *tx`. Backends
+    /// that do not need transactional control can set this to `()` (the
+    /// in-memory test writer does so).
+    type Executor<'a>: Send
+    where
+        Self: 'a;
+
+    /// Persists a single [`Event`] row through `executor`.
     ///
     /// Called by [`OutboxService::add_event`](crate::service::OutboxService::add_event)
     /// after any configured idempotency reservation has succeeded.
@@ -156,5 +171,11 @@ where
     /// Returns an [`OutboxError`] if the insert fails — typically a
     /// [`DatabaseError`](OutboxError::DatabaseError) on a unique-constraint
     /// violation or connection issue.
-    async fn insert_event(&self, event: Event<P>) -> Result<(), OutboxError>;
+    async fn insert_event<'a>(
+        &self,
+        event: Event<P>,
+        executor: Self::Executor<'a>,
+    ) -> Result<(), OutboxError>
+    where
+        'a: 'async_trait;
 }

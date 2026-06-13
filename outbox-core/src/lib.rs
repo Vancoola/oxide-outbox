@@ -56,7 +56,7 @@ mod storage;
 pub use crate::builder::OutboxManagerBuilder;
 pub use crate::config::{IdempotencyDeriver, IdempotencyStrategy, OutboxConfig};
 pub use crate::error::OutboxError;
-pub use crate::idempotency::storage::IdempotencyStorageProvider;
+pub use crate::idempotency::storage::{IdempotencyStorageProvider, NoIdempotency};
 pub use crate::manager::OutboxManager;
 pub use crate::model::{Event, EventStatus};
 pub use crate::object::{EventId, EventType, IdempotencyToken, Payload};
@@ -82,8 +82,9 @@ pub use crate::dlq::storage::DlqHeap;
 pub mod prelude {
     pub use crate::{
         Event, EventId, EventStatus, EventType, IdempotencyDeriver, IdempotencyStorageProvider,
-        IdempotencyStrategy, IdempotencyToken, OutboxConfig, OutboxError, OutboxManager,
-        OutboxManagerBuilder, OutboxService, OutboxStorage, OutboxWriter, Payload, Transport,
+        IdempotencyStrategy, IdempotencyToken, NoIdempotency, OutboxConfig, OutboxError,
+        OutboxManager, OutboxManagerBuilder, OutboxService, OutboxStorage, OutboxWriter, Payload,
+        Transport,
     };
 
     pub use crate::processor::OutboxProcessor;

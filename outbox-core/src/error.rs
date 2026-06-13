@@ -17,7 +17,7 @@ use thiserror::Error;
 /// [`DatabaseError`](Self::DatabaseError), or
 /// [`BrokerError`](Self::BrokerError); configuration and deduplication issues
 /// are terminal.
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum OutboxError {
     /// Failure from surrounding infrastructure that is not the primary
     /// database or broker (Redis, a notification channel, DNS, etc.). Usually

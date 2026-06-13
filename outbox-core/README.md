@@ -101,7 +101,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 2. Initialize Storage and Publisher
     let storage = PostgresOutbox::new(pool.clone(), config.clone());
-    let writer = Arc::new(PostgresWriter(pool.clone()));
+    // PostgresWriter is a stateless unit struct — every add_event call accepts
+    // a per-call &mut sqlx::PgConnection (typically borrowed from a held
+    // transaction via `&mut *tx`).
+    let writer = Arc::new(PostgresWriter);
     
     let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<Message>();
     let publisher = TokioEventPublisher(sender);
@@ -133,20 +136,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 5. Use the OutboxService to write events
     let service = OutboxService::new(writer, config.clone());
 
+    // The transactional pattern: open a transaction, do your business write,
+    // call add_event with `&mut *tx`, then commit. Both rows land — or roll
+    // back — together.
     info!("Inserting test event into DB...");
+    let mut tx = pool.begin().await?;
+    // ... INSERT INTO your_business_table ... .execute(&mut *tx).await? ...
     service.add_event(
         "OrderCreated",
         MyEvent::HiOutbox("Hi!".into()),
         Some(String::from("r_token")), // Provided idempotency token
+        &mut *tx,
     ).await?;
+    tx.commit().await?;
 
     info!("Testing deduplication...");
+    let mut tx = pool.begin().await?;
     if let Err(e) = service.add_event(
         "OrderCreated",
         MyEvent::HiOutbox("Hi!".into()),
         Some(String::from("r_token")), // Same token should trigger deduplication (if configured)
+        &mut *tx,
     ).await {
         error!("Deduplication error: {}", e);
+    } else {
+        tx.commit().await?;
     }
 
     // Wait to let background tasks process
@@ -193,7 +207,7 @@ Enable the `metrics` feature to get observability out of the box. Under the hood
 
 ```toml
 [dependencies]
-outbox-core = { version = "0.4", features = ["metrics"] }
+outbox-core = { version = "0.6", features = ["metrics"] }
 ```
 
 The feature is independent of `dlq` — turn either, both, or neither on.

@@ -106,6 +106,15 @@ where
     /// been used. Returns any [`OutboxError`] variant propagated from the
     /// reservation call or from the writer's `insert_event`.
     ///
+    /// # Transactional usage
+    ///
+    /// The `executor` argument is forwarded to the configured
+    /// [`OutboxWriter`](crate::storage::OutboxWriter) — for sqlx-based backends
+    /// this is typically `&mut *tx` borrowed from a held `sqlx::Transaction`.
+    /// Threading the transaction through the call is what makes the outbox
+    /// write **atomic with the caller's business write**: both rows commit or
+    /// roll back together.
+    ///
     /// # Example
     ///
     /// ```ignore
@@ -117,10 +126,11 @@ where
     /// #                            NoIdempotency,
     /// #                            MyEvent>,
     /// #     payload: MyEvent,
+    /// #     mut tx: sqlx::Transaction<'_, sqlx::Postgres>,
     /// # ) -> Result<(), OutboxError>
     /// # where MyEvent: std::fmt::Debug + Clone + serde::Serialize + Send + Sync,
     /// # {
-    /// service.add_event("order.created", payload, None).await?;
+    /// service.add_event("order.created", payload, None, &mut *tx).await?;
     /// # Ok(()) }
     /// ```
     pub async fn add_event(
@@ -128,6 +138,7 @@ where
         event_type: &str,
         payload: P,
         provided_token: Option<String>,
+        executor: W::Executor<'_>,
     ) -> Result<(), OutboxError>
     where
         P: Debug + Clone + Serialize + Send + Sync,
@@ -148,7 +159,7 @@ where
         }
 
         event.idempotency_token = i_token;
-        self.writer.insert_event(event).await
+        self.writer.insert_event(event, executor).await
     }
 }
 
@@ -158,9 +169,10 @@ mod tests {
     use super::*;
     use crate::config::IdempotencyStrategy;
     use crate::idempotency::storage::MockIdempotencyStorageProvider;
-    use crate::storage::MockOutboxWriter;
+    use async_trait::async_trait;
     use rstest::rstest;
     use serde::Deserialize;
+    use std::sync::Mutex;
 
     #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
     struct TestPayload {
@@ -184,81 +196,121 @@ mod tests {
         })
     }
 
+    /// Test double for `OutboxWriter`: captures every event handed to
+    /// `insert_event` and (optionally) returns a pre-configured error instead
+    /// of succeeding. Uses `()` as the executor handle — tests don't need a
+    /// real transaction.
+    #[derive(Default)]
+    struct CapturingWriter {
+        captured: Mutex<Vec<Event<TestPayload>>>,
+        error: Option<OutboxError>,
+    }
+
+    impl CapturingWriter {
+        fn ok() -> Self {
+            Self::default()
+        }
+
+        fn failing(error: OutboxError) -> Self {
+            Self {
+                captured: Mutex::new(Vec::new()),
+                error: Some(error),
+            }
+        }
+
+        fn events(&self) -> Vec<Event<TestPayload>> {
+            self.captured.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait]
+    impl OutboxWriter<TestPayload> for CapturingWriter {
+        type Executor<'a> = ();
+
+        async fn insert_event<'a>(
+            &self,
+            event: Event<TestPayload>,
+            _: (),
+        ) -> Result<(), OutboxError>
+        where
+            'a: 'async_trait,
+        {
+            if let Some(err) = &self.error {
+                return Err(err.clone());
+            }
+            self.captured.lock().unwrap().push(event);
+            Ok(())
+        }
+    }
+
     #[rstest]
     #[tokio::test]
     async fn none_strategy_without_idempotency_storage_inserts_event_without_token() {
-        let mut writer = MockOutboxWriter::<TestPayload>::new();
-        writer
-            .expect_insert_event()
-            .withf(|e| e.idempotency_token.is_none() && e.event_type.as_str() == "t")
-            .times(1)
-            .returning(|_| Ok(()));
-
-        let service = OutboxService::new(Arc::new(writer), config_with(IdempotencyStrategy::None));
-        let result = service.add_event("t", payload(), None).await;
+        let writer = Arc::new(CapturingWriter::ok());
+        let service = OutboxService::new(writer.clone(), config_with(IdempotencyStrategy::None));
+        let result = service.add_event("t", payload(), None, ()).await;
         assert!(result.is_ok());
+
+        let events = writer.events();
+        assert_eq!(events.len(), 1);
+        assert!(events[0].idempotency_token.is_none());
+        assert_eq!(events[0].event_type.as_str(), "t");
     }
 
     #[rstest]
     #[tokio::test]
     async fn uuid_strategy_without_idempotency_storage_inserts_event_with_generated_token() {
-        let mut writer = MockOutboxWriter::<TestPayload>::new();
-        writer
-            .expect_insert_event()
-            .withf(|e| {
-                e.idempotency_token
-                    .as_ref()
-                    .is_some_and(|t| !t.as_str().is_empty())
-            })
-            .times(1)
-            .returning(|_| Ok(()));
-
-        let service = OutboxService::new(Arc::new(writer), config_with(IdempotencyStrategy::Uuid));
-        let result = service.add_event("t", payload(), None).await;
+        let writer = Arc::new(CapturingWriter::ok());
+        let service = OutboxService::new(writer.clone(), config_with(IdempotencyStrategy::Uuid));
+        let result = service.add_event("t", payload(), None, ()).await;
         assert!(result.is_ok());
+
+        let events = writer.events();
+        assert_eq!(events.len(), 1);
+        let token = events[0]
+            .idempotency_token
+            .as_ref()
+            .expect("Uuid strategy must produce a token");
+        assert!(!token.as_str().is_empty());
     }
 
     #[rstest]
     #[tokio::test]
     async fn uuid_strategy_with_storage_reserves_same_token_as_inserted() {
-        let mut writer = MockOutboxWriter::<TestPayload>::new();
+        let writer = Arc::new(CapturingWriter::ok());
         let mut idem = MockIdempotencyStorageProvider::new();
 
-        // Захватим токен из reserve и убедимся, что тот же приедет в insert.
-        let reserved: Arc<std::sync::Mutex<Option<String>>> = Arc::new(std::sync::Mutex::new(None));
+        // Capture the reserved token so we can compare it to what reached the writer.
+        let reserved: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let reserved_r = reserved.clone();
-        let reserved_w = reserved.clone();
 
         idem.expect_try_reserve().times(1).returning(move |tok| {
             *reserved_r.lock().unwrap() = Some(tok.as_str().to_owned());
             Ok(true)
         });
 
-        writer
-            .expect_insert_event()
-            .withf(move |e| {
-                let captured = reserved_w.lock().unwrap().clone();
-                match (&e.idempotency_token, captured) {
-                    (Some(t), Some(expected)) => t.as_str() == expected,
-                    _ => false,
-                }
-            })
-            .times(1)
-            .returning(|_| Ok(()));
-
         let service = OutboxService::with_idempotency(
-            Arc::new(writer),
+            writer.clone(),
             config_with(IdempotencyStrategy::Uuid),
             Arc::new(idem),
         );
-        let result = service.add_event("t", payload(), None).await;
+        let result = service.add_event("t", payload(), None, ()).await;
         assert!(result.is_ok());
+
+        let events = writer.events();
+        assert_eq!(events.len(), 1);
+        let inserted = events[0]
+            .idempotency_token
+            .as_ref()
+            .map(|t| t.as_str().to_owned());
+        let captured = reserved.lock().unwrap().clone();
+        assert_eq!(inserted, captured);
     }
 
     #[rstest]
     #[tokio::test]
     async fn provided_some_passes_user_token_to_reserve_and_insert() {
-        let mut writer = MockOutboxWriter::<TestPayload>::new();
+        let writer = Arc::new(CapturingWriter::ok());
         let mut idem = MockIdempotencyStorageProvider::new();
 
         idem.expect_try_reserve()
@@ -266,48 +318,42 @@ mod tests {
             .times(1)
             .returning(|_| Ok(true));
 
-        writer
-            .expect_insert_event()
-            .withf(|e| {
-                e.idempotency_token
-                    .as_ref()
-                    .is_some_and(|t| t.as_str() == "user-tok")
-            })
-            .times(1)
-            .returning(|_| Ok(()));
-
         let service = OutboxService::with_idempotency(
-            Arc::new(writer),
+            writer.clone(),
             config_with(IdempotencyStrategy::Provided),
             Arc::new(idem),
         );
         let result = service
-            .add_event("t", payload(), Some("user-tok".to_string()))
+            .add_event("t", payload(), Some("user-tok".to_string()), ())
             .await;
         assert!(result.is_ok());
+
+        let events = writer.events();
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            events[0].idempotency_token.as_ref().map(|t| t.as_str()),
+            Some("user-tok")
+        );
     }
 
     #[rstest]
     #[tokio::test]
     async fn provided_none_skips_reserve_and_inserts_without_token() {
-        let mut writer = MockOutboxWriter::<TestPayload>::new();
+        let writer = Arc::new(CapturingWriter::ok());
         let mut idem = MockIdempotencyStorageProvider::new();
-
         idem.expect_try_reserve().times(0);
 
-        writer
-            .expect_insert_event()
-            .withf(|e| e.idempotency_token.is_none())
-            .times(1)
-            .returning(|_| Ok(()));
-
         let service = OutboxService::with_idempotency(
-            Arc::new(writer),
+            writer.clone(),
             config_with(IdempotencyStrategy::Provided),
             Arc::new(idem),
         );
-        let result = service.add_event("t", payload(), None).await;
+        let result = service.add_event("t", payload(), None, ()).await;
         assert!(result.is_ok());
+
+        let events = writer.events();
+        assert_eq!(events.len(), 1);
+        assert!(events[0].idempotency_token.is_none());
     }
 
     #[rstest]
@@ -317,7 +363,7 @@ mod tests {
             format!("derived:{}", event.payload.as_value().kind)
         }
 
-        let mut writer = MockOutboxWriter::<TestPayload>::new();
+        let writer = Arc::new(CapturingWriter::ok());
         let mut idem = MockIdempotencyStorageProvider::new();
 
         idem.expect_try_reserve()
@@ -325,81 +371,79 @@ mod tests {
             .times(1)
             .returning(|_| Ok(true));
 
-        writer
-            .expect_insert_event()
-            .withf(|e| {
-                e.idempotency_token
-                    .as_ref()
-                    .is_some_and(|t| t.as_str() == "derived:k")
-            })
-            .times(1)
-            .returning(|_| Ok(()));
-
         let service = OutboxService::with_idempotency(
-            Arc::new(writer),
+            writer.clone(),
             config_with(IdempotencyStrategy::Custom(Arc::new(derive))),
             Arc::new(idem),
         );
-        let result = service.add_event("t", payload(), None).await;
+        let result = service.add_event("t", payload(), None, ()).await;
         assert!(result.is_ok());
+
+        let events = writer.events();
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            events[0].idempotency_token.as_ref().map(|t| t.as_str()),
+            Some("derived:k")
+        );
     }
 
     #[rstest]
     #[tokio::test]
     async fn duplicate_when_reserve_returns_false_and_insert_is_not_called() {
-        let mut writer = MockOutboxWriter::<TestPayload>::new();
+        let writer = Arc::new(CapturingWriter::ok());
         let mut idem = MockIdempotencyStorageProvider::new();
 
         idem.expect_try_reserve().times(1).returning(|_| Ok(false));
-        writer.expect_insert_event().times(0);
 
         let service = OutboxService::with_idempotency(
-            Arc::new(writer),
+            writer.clone(),
             config_with(IdempotencyStrategy::Provided),
             Arc::new(idem),
         );
-        let result = service.add_event("t", payload(), Some("dup".into())).await;
+        let result = service
+            .add_event("t", payload(), Some("dup".into()), ())
+            .await;
         assert!(matches!(result, Err(OutboxError::DuplicateEvent)));
+        assert!(writer.events().is_empty());
     }
 
     #[rstest]
     #[tokio::test]
     async fn reserve_error_propagates_and_insert_is_not_called() {
-        let mut writer = MockOutboxWriter::<TestPayload>::new();
+        let writer = Arc::new(CapturingWriter::ok());
         let mut idem = MockIdempotencyStorageProvider::new();
 
         idem.expect_try_reserve()
             .times(1)
             .returning(|_| Err(OutboxError::InfrastructureError("redis down".into())));
-        writer.expect_insert_event().times(0);
 
         let service = OutboxService::with_idempotency(
-            Arc::new(writer),
+            writer.clone(),
             config_with(IdempotencyStrategy::Uuid),
             Arc::new(idem),
         );
-        let result = service.add_event("t", payload(), None).await;
+        let result = service.add_event("t", payload(), None, ()).await;
         assert!(matches!(result, Err(OutboxError::InfrastructureError(_))));
+        assert!(writer.events().is_empty());
     }
 
     #[rstest]
     #[tokio::test]
     async fn insert_error_propagates_after_successful_reserve() {
-        let mut writer = MockOutboxWriter::<TestPayload>::new();
+        let writer = Arc::new(CapturingWriter::failing(OutboxError::DatabaseError(
+            "pk conflict".into(),
+        )));
         let mut idem = MockIdempotencyStorageProvider::new();
 
         idem.expect_try_reserve().times(1).returning(|_| Ok(true));
-        writer
-            .expect_insert_event()
-            .times(1)
-            .returning(|_| Err(OutboxError::DatabaseError("pk conflict".into())));
 
         let service = OutboxService::with_idempotency(
-            Arc::new(writer),
+            writer.clone(),
             config_with(IdempotencyStrategy::Uuid),
             Arc::new(idem),
         );
-        let result = service.add_event("t", payload(), None).await;
+        let result = service.add_event("t", payload(), None, ()).await;
         assert!(matches!(result, Err(OutboxError::DatabaseError(_))));
+        assert!(writer.events().is_empty());
     }
 }

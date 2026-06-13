@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use outbox_core::prelude::*;
 use serde::Serialize;
+use sqlx::PgPool;
 use sqlx::postgres::PgListener;
 use sqlx::types::uuid;
-use sqlx::{Executor, PgPool, Postgres};
 use std::fmt::Debug;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -213,16 +213,50 @@ where
     }
 }
 
-pub struct PostgresWriter<E>(pub E);
+/// Stateless writer for the `outbox_events` table.
+///
+/// The writer carries no connection or pool. The actual database handle is
+/// passed per-call via [`OutboxWriter::insert_event`]'s `executor` argument —
+/// idiomatically `&mut *tx` from a held [`sqlx::Transaction`], so the outbox
+/// row lands in the same commit as the caller's business write.
+///
+/// # Example
+///
+/// ```ignore
+/// use outbox_core::prelude::*;
+/// use outbox_postgres::PostgresWriter;
+/// use std::sync::Arc;
+///
+/// # async fn create_order(pool: sqlx::PgPool, config: Arc<OutboxConfig<MyEvent>>, payload: MyEvent)
+/// # -> Result<(), OutboxError>
+/// # where MyEvent: std::fmt::Debug + Clone + serde::Serialize + Send + Sync + 'static
+/// # {
+/// let service = OutboxService::new(Arc::new(PostgresWriter), config);
+///
+/// let mut tx = pool.begin().await.map_err(|e| OutboxError::DatabaseError(e.to_string()))?;
+/// // ... INSERT INTO orders ... .execute(&mut *tx).await? ...
+/// service.add_event("OrderCreated", payload, None, &mut *tx).await?;
+/// tx.commit().await.map_err(|e| OutboxError::DatabaseError(e.to_string()))?;
+/// # Ok(()) }
+/// ```
+#[derive(Debug, Default, Clone, Copy)]
+pub struct PostgresWriter;
 
 #[async_trait]
-impl<E, P> OutboxWriter<P> for PostgresWriter<E>
+impl<P> OutboxWriter<P> for PostgresWriter
 where
-    for<'c> &'c E: Executor<'c, Database = Postgres>,
-    E: Send + Sync,
     P: Debug + Clone + Serialize + Send + Sync + 'static,
 {
-    async fn insert_event(&self, event: Event<P>) -> Result<(), OutboxError> {
+    type Executor<'a> = &'a mut sqlx::PgConnection;
+
+    async fn insert_event<'a>(
+        &self,
+        event: Event<P>,
+        executor: &'a mut sqlx::PgConnection,
+    ) -> Result<(), OutboxError>
+    where
+        'a: 'async_trait,
+    {
         sqlx::query(
             r"
         INSERT INTO outbox_events (id, idempotency_token, event_type, payload, status, created_at, locked_until)
@@ -236,7 +270,7 @@ where
             .bind(event.status)
             .bind(event.created_at)
             .bind(event.locked_until)
-            .execute(&self.0)
+            .execute(executor)
             .await
             .map_err(|e| OutboxError::DatabaseError(e.to_string()))?;
 

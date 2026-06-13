@@ -1,6 +1,6 @@
 [package]
 name = "outbox-core"
-version = "0.5.0"
+version = "0.6.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -34,6 +34,11 @@ tokio = { workspace = true, features = ["test-util"] }
 default = []
 dlq = []
 full = ["sqlx", "metrics", "dlq"]
+
+# Build docs on docs.rs with every feature so the full API surface (dlq,
+# metrics, sqlx) and its intra-doc links resolve.
+[package.metadata.docs.rs]
+all-features = true
 
 [lints]
 workspace = true

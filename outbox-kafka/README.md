@@ -9,10 +9,12 @@ The Apache Kafka transport implementation for [`outbox-core`](https://crates.io/
 
 ## Key Features
 
+* **Idempotent producer by default** (v0.2.0): `KafkaTransport::new` sets `enable.idempotence=true` unless you explicitly override it. This is required to preserve per-partition order when librdkafka retries — without it `max.in.flight.requests.per.connection > 1` (the default) could reorder messages on the wire and silently break the outbox's in-order guarantee.
 * **Async-First**: Built on `rdkafka`'s `FutureProducer` for high-throughput, non-blocking event publishing.
 * **Automatic Metadata Propagation**: Maps Outbox event metadata (ID, Type, CreatedAt) directly to Kafka record headers.
 * **Custom Partitioning**: Uses the `KafkaKeyExtractable` trait to allow you to define business-logic keys for Kafka partitioning.
 * **At-Least-Once Delivery**: Works with `outbox-core` to ensure messages are only marked as "sent" after a successful Kafka ACK.
+* **Configurable send timeout**: `with_send_timeout(Duration)` builder method overrides the per-record `FutureProducer::send` timeout (defaults to 10s).
 
 ## Installation
 
@@ -20,8 +22,8 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-outbox-core = "0.4"
-outbox-kafka = "0.1"
+outbox-core = "0.6"
+outbox-kafka = "0.2"
 ```
 
 ---

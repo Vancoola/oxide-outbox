@@ -27,7 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let regis_config = RedisTokenConfig::default();
 
     let storage = PostgresOutbox::new(pool.clone(), config.clone());
-    let writer = Arc::new(PostgresWriter(pool.clone()));
+    let writer = Arc::new(PostgresWriter);
     let redis_provider = RedisProvider::new("redis://127.0.0.1:6379", regis_config).await?;
 
     let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<Message>();
@@ -59,20 +59,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let service = OutboxService::with_idempotency(writer, config.clone(), Arc::new(redis_provider));
 
     info!("Inserting test event into DB...");
+    let mut conn = pool.acquire().await?;
     service
         .add_event(
             "OrderCreated",
             MyEvent::HiOutbox("Hi!".into()),
             Some(String::from("r_token")),
+            &mut conn,
         )
         .await?;
     tokio::time::sleep(Duration::from_secs(10)).await;
     info!("Deduplication! Inserting test 2 event into DB...");
+    let mut conn = pool.acquire().await?;
     if let Err(e) = service
         .add_event(
             "OrderCreated",
             MyEvent::HiOutbox("Hi!".into()),
             Some(String::from("r_token")),
+            &mut conn,
         )
         .await
     {

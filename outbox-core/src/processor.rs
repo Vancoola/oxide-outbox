@@ -105,6 +105,7 @@ where
             #[cfg(feature = "metrics")]
             let start = std::time::Instant::now();
 
+            #[cfg(feature = "metrics")]
             let event_type = event.event_type.to_string();
 
             match self.publisher.publish(event).await {

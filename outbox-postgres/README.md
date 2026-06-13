@@ -9,7 +9,7 @@ This crate leverages `sqlx` to provide a robust, concurrency-safe, and real-time
 
 ## Key Features
 
-* **ACID Guarantees**: Use `PostgresWriter` with an `sqlx::Transaction` to save your business data and outbox events in the exact same database transaction.
+* **True transactional outbox** (v0.3.0): `PostgresWriter` is a stateless unit struct that receives the executor handle per call. Pass `&mut *tx` from your `sqlx::Transaction` into `OutboxService::add_event` and the outbox row commits in the **same** SQL transaction as your business write — no dual-write race possible.
 * **Concurrency Safe**: Uses Postgres' `FOR UPDATE SKIP LOCKED` mechanism to safely allow multiple outbox workers to process events concurrently without stepping on each other's toes.
 * **Instant Processing**: Native support for PostgreSQL `LISTEN` / `NOTIFY`. The `PostgresOutbox` listens for DB triggers to wake up and process events instantly, minimizing latency and falling back to polling only as a safety net.
 * **Type-Safe JSONB**: Seamlessly serializes your strongly-typed generic domain events (`Event<P>`) into PostgreSQL `jsonb` columns.
@@ -22,8 +22,8 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-outbox-core = "0.4"
-outbox-postgres = { version = "0.2", features = ["dlq"] } # drop the feature if you don't need DLQ
+outbox-core = "0.6"
+outbox-postgres = { version = "0.3", features = ["dlq"] } # drop the feature if you don't need DLQ
 sqlx = { version = "0.8.6", features = ["postgres", "runtime-tokio", "macros", "uuid", "time"] }
 ```
 
@@ -120,3 +120,48 @@ let postgres_storage = PostgresOutbox::<MyEvent>::new(pool, config.clone());
 
 // Pass postgres_storage to OutboxManagerBuilder::new().storage(...)
 ```
+
+### Atomic write with `PostgresWriter`
+
+`PostgresWriter` is a stateless unit struct: every call to
+`OutboxService::add_event` takes the executor as a parameter. Borrow
+`&mut *tx` from your held `sqlx::Transaction` and both the business `INSERT`
+and the outbox row commit (or roll back) together — that is the actual outbox
+guarantee.
+
+```rust
+use outbox_core::{OutboxConfig, OutboxService};
+use outbox_postgres::PostgresWriter;
+use sqlx::PgPool;
+use std::sync::Arc;
+
+let writer = Arc::new(PostgresWriter); // no pool baked in
+let service = OutboxService::new(writer, config.clone());
+
+// Inside an HTTP handler / command handler / domain action:
+let mut tx = pool.begin().await?;
+
+sqlx::query("INSERT INTO orders (id, customer_id, total_cents) VALUES ($1, $2, $3)")
+    .bind(order_id)
+    .bind(&customer_id)
+    .bind(total_cents)
+    .execute(&mut *tx)
+    .await?;
+
+service
+    .add_event("OrderCreated", payload, None, &mut *tx)
+    .await?;
+
+tx.commit().await?; // single fsync; both rows become durable together.
+```
+
+If you don't need transactional control (a stand-alone publisher, batch
+import, etc.), acquire a connection from the pool instead:
+
+```rust
+let mut conn = pool.acquire().await?;
+service.add_event("BatchItem", payload, None, &mut conn).await?;
+```
+
+See [`example/order-service`](../example/order-service) for the full
+HTTP + axum + outbox + Kafka demo.

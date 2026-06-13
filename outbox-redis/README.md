@@ -21,7 +21,7 @@ The Redis-backed provider for [`outbox-core`](https://crates.io/crates/outbox-co
 Add this to your `Cargo.toml`:
 ```toml
 [dependencies]
-outbox-core = "0.4"
+outbox-core = "0.6"
 outbox-redis = { version = "0.1", features = ["moka", "dlq"] } # 'moka' = L1 local cache, 'dlq' = DLQ heap
 ```
 
@@ -74,20 +74,29 @@ let service = OutboxService::with_idempotency(
     Arc::new(redis_provider)
 );
 
-// This event will be recorded in the DB
+// First request — wrap the outbox write in the same transaction as your
+// business write so both rows commit together.
+let mut tx = pool.begin().await?;
+// ... INSERT INTO your_business_table ... .execute(&mut *tx).await? ...
 service.add_event(
     "OrderCreated",
     MyEvent::HiOutbox("First request".into()),
     Some("unique_token_123".into()),
+    &mut *tx,
 ).await?;
+tx.commit().await?;
 
-// This second call with the same token will return an DuplicateEvent 
-// (or Ok(false) depending on internal logic), preventing a duplicate DB write.
+// Same token, second time around — Redis sees the reserved token and the
+// service returns OutboxError::DuplicateEvent before touching the DB.
+let mut tx = pool.begin().await?;
 let result = service.add_event(
     "OrderCreated",
     MyEvent::HiOutbox("Duplicate request".into()),
     Some("unique_token_123".into()),
+    &mut *tx,
 ).await;
+// On Err(DuplicateEvent) the transaction is implicitly rolled back on drop —
+// nothing landed in the business table either.
 ```
 
 ---

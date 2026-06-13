@@ -7,6 +7,7 @@
 //! the side. Construct one via [`OutboxManagerBuilder`](crate::builder::OutboxManagerBuilder).
 
 use crate::config::OutboxConfig;
+#[cfg(feature = "dlq")]
 use crate::dlq::processor::DlqProcessor;
 use crate::error::OutboxError;
 use crate::gc::GarbageCollector;

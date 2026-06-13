@@ -63,7 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Arc::new(config);
 
     let storage = PostgresOutbox::new(pool.clone(), config.clone());
-    let writer = Arc::new(PostgresWriter(pool.clone()));
+    let writer = Arc::new(PostgresWriter);
 
     let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<Message>();
     let publisher = FlakyPublisher::new(sender);
@@ -97,13 +97,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let service = OutboxService::new(writer, config.clone());
 
     info!("Inserting GoodPing event...");
+    let mut conn = pool.acquire().await?;
     service
-        .add_event("GoodPing", DemoEvent::Ping("hello".into()), None)
+        .add_event("GoodPing", DemoEvent::Ping("hello".into()), None, &mut conn)
         .await?;
 
     info!("Inserting CursedPing event (publisher will fail it forever)...");
+    let mut conn = pool.acquire().await?;
     service
-        .add_event("CursedPing", DemoEvent::Ping("doom".into()), None)
+        .add_event(
+            "CursedPing",
+            DemoEvent::Ping("doom".into()),
+            None,
+            &mut conn,
+        )
         .await?;
 
     info!("Waiting ~240s for worker to retry, fail, and quarantine the cursed event...");

@@ -1,0 +1,45 @@
+[package]
+name = "order-service"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+publish = false
+
+[dependencies]
+outbox-core = { path = "../../outbox-core" }
+outbox-postgres = { path = "../../outbox-postgres" }
+outbox-kafka = { path = "../../outbox-kafka" }
+
+# Runtime + HTTP
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal"] }
+axum = "0.8"
+
+# DB
+sqlx = { workspace = true, features = ["migrate"] }
+
+# Kafka producer + consumer
+rdkafka = { workspace = true, features = ["tokio"] }
+
+# Serialization
+serde = { workspace = true }
+serde_json.workspace = true
+uuid = { workspace = true, features = ["serde"] }
+time = { workspace = true }
+
+# Async glue
+async-trait.workspace = true
+
+# Logging
+tracing.workspace = true
+tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
+
+# Errors
+anyhow = "1"
+thiserror.workspace = true
+
+[lints]
+workspace = true

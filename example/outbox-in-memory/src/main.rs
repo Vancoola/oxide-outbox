@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Arc::new(config);
 
     let storage = PostgresOutbox::new(pool.clone(), config.clone());
-    let writer = Arc::new(PostgresWriter(pool.clone()));
+    let writer = Arc::new(PostgresWriter);
 
     let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<Message>();
     let publisher = TokioEventPublisher(sender);
@@ -55,19 +55,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let service = OutboxService::new(writer, config.clone());
 
     info!("Inserting test event into DB...");
+    let mut conn = pool.acquire().await?;
     service
         .add_event(
             "OrderCreated",
             MyEvent::HiOutbox("Hi!".into()),
             Some(String::from("r_token")),
+            &mut conn,
         )
         .await?;
+
     info!("Inserting test 2 event into DB...");
+    let mut conn = pool.acquire().await?;
     if let Err(e) = service
         .add_event(
             "OrderCreated",
             MyEvent::HiOutbox("Hi!".into()),
             Some(String::from("r_token")),
+            &mut conn,
         )
         .await
     {

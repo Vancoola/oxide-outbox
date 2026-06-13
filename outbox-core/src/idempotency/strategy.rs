@@ -76,7 +76,7 @@ mod tests {
         let s = IdempotencyStrategy::<TestPayload>::Uuid;
         let token = s.invoke(None, &test_event()).expect("Uuid must yield Some");
         assert!(!token.is_empty());
-        // Должен парситься как UUID.
+        // Must parse as a UUID.
         assert!(
             uuid::Uuid::parse_str(&token).is_ok(),
             "not a valid UUID: {token}"

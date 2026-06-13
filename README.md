@@ -9,8 +9,10 @@ A high-performance, flexible implementation of the **Transactional Outbox patter
 
 ## Key Features
 
+* **True transactional outbox** (`outbox-core` 0.6 + `outbox-postgres` 0.3): `OutboxService::add_event(..., &mut *tx)` writes the outbox row inside your held `sqlx::Transaction`. Business `INSERT` and outbox row commit — or roll back — together. No dual-write race.
 * **Hybrid Event Discovery**: Combines real-time database notifications (e.g., Postgres `LISTEN/NOTIFY`) with fallback polling intervals to ensure zero lost events.
 * **Trait-First Architecture**: Completely decoupled from specific storage or message brokers. Switch between Postgres, MySQL, Kafka, or RabbitMQ by implementing simple traits.
+* **Idempotent Kafka producer by default** (`outbox-kafka` 0.2): `KafkaTransport` enables `enable.idempotence=true` automatically — preserves per-partition order across librdkafka retries.
 * **Built-in Garbage Collection**: Automatic cleanup of processed events to prevent table bloat.
 * **Dead Letter Queue (DLQ)**: Chronically failing events are tracked, and after crossing a configurable threshold are moved to a dedicated quarantine store — they stop blocking healthy traffic without being silently lost.
 * **Metrics (optional)**: Plug in [`metrics`](https://crates.io/crates/metrics)-compatible exporter and get a publish counter + duration histogram out of the box, labelled by `event_type` and `status`.
@@ -45,11 +47,18 @@ Add this to your `Cargo.toml`:
 ```toml
 [dependencies]
 
-outbox-core = { version = "0.4", features = ["metrics"] } # 'metrics' is optional
-outbox-postgres = { version = "0.2", features = ["dlq"] } # If using Postgres + DLQ
+outbox-core = { version = "0.6", features = ["metrics"] } # 'metrics' is optional
+outbox-postgres = { version = "0.3", features = ["dlq"] } # If using Postgres + DLQ
 outbox-redis = { version = "0.1", features = ["moka", "dlq"] } # Optional Redis deduplication + DLQ heap
-outbox-kafka = "0.1" # Optional Kafka transport
+outbox-kafka = "0.2" # Optional Kafka transport
 ```
+
+### End-to-end example
+
+See [`example/order-service`](./example/order-service) for a full
+HTTP + Postgres + Kafka demo with a one-command `docker compose up` setup. It
+shows the transactional pattern (`add_event(..., &mut *tx)`) end-to-end and
+ships a demo consumer that prints the events as they're delivered.
 
 ---
 
