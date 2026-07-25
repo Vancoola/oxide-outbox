@@ -10,7 +10,7 @@ readme.workspace = true
 
 [dependencies]
 tokio = { version = "1.49.0", features = ["full"] }
-sqlx = { version = "0.8.6", features = ["postgres", "runtime-tokio", "macros", "uuid", "time"] }
+sqlx = { workspace = true }
 async-trait = "0.1.89"
 outbox-core = { path = "../../outbox-core", features = ["dlq"] }
 outbox-postgres = { path = "../../outbox-postgres", features = ["dlq"] }
